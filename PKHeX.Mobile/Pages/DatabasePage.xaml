@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="PKHeX.Mobile.Pages.DatabasePage"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{DynamicResource ThPageBg}">
+
+    <Grid RowDefinitions="Auto,Auto,*" BackgroundColor="{DynamicResource ThPageBg}">
+
+        <!-- Header -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto"
+              BackgroundColor="{DynamicResource ThCardBg}"
+              Padding="18,14,18,12">
+            <Label Text="SEARCH"
+                   FontFamily="NunitoBold" FontSize="11"
+                   TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.5"
+                   VerticalOptions="Center" />
+            <Label Grid.Column="1"
+                   Text="↕ nav  A select  B back"
+                   FontFamily="Nunito" FontSize="9"
+                   TextColor="{DynamicResource ThTextHint}"
+                   VerticalOptions="Center" />
+        </Grid>
+
+        <!-- Filter bar -->
+        <Border Grid.Row="1"
+                BackgroundColor="{DynamicResource ThCardBg}"
+                Stroke="{DynamicResource ThDivider}" StrokeThickness="1"
+                StrokeShape="RoundRectangle 12"
+                Margin="14,10,14,4" Padding="12,2">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <Entry x:Name="SearchEntry"
+                       Placeholder="Species name…"
+                       PlaceholderColor="{DynamicResource ThTextHint}"
+                       BackgroundColor="Transparent"
+                       TextColor="{DynamicResource ThTextPrimary}"
+                       TextChanged="OnFilterChanged" />
+                <Label Grid.Column="1" x:Name="ShinyLabel"
+                       Text="✦" VerticalOptions="Center"
+                       FontSize="16" TextColor="{DynamicResource ThTextSecondary}" />
+                <Switch Grid.Column="2" x:Name="ShinyFilter"
+                        Toggled="OnFilterChanged" VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
+        <!-- Results -->
+        <CollectionView Grid.Row="2" x:Name="ResultsView"
+                        SelectionMode="Single"
+                        SelectionChanged="OnSelectionChanged"
+                        BackgroundColor="Transparent"
+                        Margin="14,6,14,0">
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <!-- Grid is the DataTemplate root so VSM suppresses Android's native orange selection overlay -->
+                    <Grid Margin="0,0,0,0">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroupList>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal">
+                                        <VisualState.Setters>
+                                            <Setter Property="BackgroundColor" Value="Transparent" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Selected">
+                                        <VisualState.Setters>
+                                            <Setter Property="BackgroundColor" Value="Transparent" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateGroupList>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border StrokeShape="RoundRectangle 12" StrokeThickness="1"
+                                BackgroundColor="{DynamicResource ThCardBg}"
+                                Stroke="{DynamicResource ThDivider}"
+                                Padding="0">
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsHighlighted}" Value="True">
+                                    <Setter Property="Stroke" Value="#4A90D9" />
+                                    <Setter Property="StrokeThickness" Value="2" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                        <Grid ColumnDefinitions="56,*,Auto" Padding="10,8" ColumnSpacing="10">
+                            <Image Grid.Column="0"
+                                   Source="{Binding SpriteSource}"
+                                   WidthRequest="56" HeightRequest="46"
+                                   Aspect="AspectFit" />
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                <Label Text="{Binding DisplayName}"
+                                       FontFamily="NunitoExtraBold" FontSize="14"
+                                       TextColor="{DynamicResource ThTextPrimary}" />
+                                <Label Text="{Binding SubInfo}"
+                                       FontFamily="Nunito" FontSize="12"
+                                       TextColor="{DynamicResource ThTextSecondary}" />
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="{Binding BoxSlotLabel}"
+                                   FontFamily="Nunito" FontSize="11"
+                                   TextColor="{DynamicResource ThTextDim}"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        </Border>
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+            <CollectionView.EmptyView>
+                <Label Text="没有找到宝可梦。"
+                       HorizontalOptions="Center"
+                       FontFamily="Nunito" FontSize="14"
+                       TextColor="{DynamicResource ThTextSecondary}"
+                       Margin="0,40,0,0" />
+            </CollectionView.EmptyView>
+        </CollectionView>
+
+    </Grid>
+</ContentPage>

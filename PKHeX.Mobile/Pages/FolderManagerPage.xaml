@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:PKHeX.Mobile.Theme"
+             x:Class="PKHeX.Mobile.Pages.FolderManagerPage"
+             Title="Manage Save Folders/Files"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{DynamicResource ThSettingsBg}">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16"
+          BackgroundColor="{DynamicResource ThSettingsBg}">
+
+        <!-- Header -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,12,0,8">
+            <Border Grid.Column="0" BackgroundColor="Transparent" Stroke="Transparent" Padding="0">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnBackClicked" />
+                </Border.GestureRecognizers>
+                <HorizontalStackLayout Spacing="4" VerticalOptions="Center" Padding="0,6">
+                    <Label Text="{x:Static theme:Ph.ArrowLeft}"
+                           FontFamily="Phosphor" FontSize="18"
+                           TextColor="{DynamicResource ThAccent}"
+                           VerticalOptions="Center" />
+                    <Label Text="返回"
+                           FontFamily="NunitoBold" FontSize="14"
+                           TextColor="{DynamicResource ThAccent}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
+            <Label Grid.Column="1" Text="存档文件夹"
+                   FontFamily="NunitoBold" FontSize="20"
+                   TextColor="{DynamicResource ThTextPrimary}"
+                   VerticalOptions="Center" HorizontalOptions="Center" />
+        </Grid>
+
+        <!-- Gamepad hint -->
+        <Label Grid.Row="1"
+               Text="↕ scroll  X remove  L add folder  R add file  B back"
+               FontSize="10" TextColor="{DynamicResource ThTextDim}"
+               HorizontalOptions="End" Margin="0,0,0,8" />
+
+        <!-- Directory/file list -->
+        <CollectionView x:Name="DirList" Grid.Row="2"
+                        SelectionMode="Single"
+                        BackgroundColor="Transparent">
+            <CollectionView.EmptyView>
+                <Label Text="还没有添加文件夹或文件。"
+                       TextColor="{DynamicResource ThTextSecondary}" FontSize="14"
+                       HorizontalOptions="Center" VerticalOptions="Center"
+                       Margin="24,40" HorizontalTextAlignment="Center" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border Margin="0,0,0,4" StrokeShape="RoundRectangle 6"
+                            BackgroundColor="{DynamicResource ThSettingsRow}"
+                            Stroke="Transparent" Padding="12,10">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0"
+                                   Text="{Binding Icon}"
+                                   FontFamily="Phosphor" FontSize="18"
+                                   TextColor="{DynamicResource ThAccentLight}"
+                                   VerticalOptions="Center" Margin="0,0,10,0" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding Label}"
+                                   TextColor="{DynamicResource ThTextPrimary}"
+                                   FontSize="13"
+                                   LineBreakMode="MiddleTruncation"
+                                   VerticalOptions="Center" />
+                            <Border Grid.Column="2"
+                                    BackgroundColor="{DynamicResource ThNavBtnBg}"
+                                    StrokeShape="RoundRectangle 6"
+                                    Stroke="Transparent" Padding="10,6">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Tapped="OnRemoveClicked"
+                                        CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="{x:Static theme:Ph.Trash}"
+                                       FontFamily="Phosphor" FontSize="16"
+                                       TextColor="#FF6060"
+                                       VerticalOptions="Center"
+                                       HorizontalOptions="Center" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Add buttons -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,12,0,12">
+            <Border Grid.Column="0" StrokeShape="RoundRectangle 8"
+                    BackgroundColor="{DynamicResource ThNavBtnBg}"
+                    Stroke="{DynamicResource ThAccent}" Padding="0">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnAddFolderClicked" />
+                </Border.GestureRecognizers>
+                <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center"
+                                       Spacing="8" Padding="0,14">
+                    <Label Text="{x:Static theme:Ph.Folder}"
+                           FontFamily="Phosphor" FontSize="20"
+                           TextColor="{DynamicResource ThAccentLight}"
+                           VerticalOptions="Center" />
+                    <Label Text="添加文件夹"
+                           FontFamily="NunitoBold" FontSize="15"
+                           TextColor="{DynamicResource ThAccentLight}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
+            <Border Grid.Column="1" StrokeShape="RoundRectangle 8"
+                    BackgroundColor="{DynamicResource ThNavBtnBg}"
+                    Stroke="{DynamicResource ThAccent}" Padding="0">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnAddFileClicked" />
+                </Border.GestureRecognizers>
+                <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center"
+                                       Spacing="8" Padding="0,14">
+                    <Label Text="{x:Static theme:Ph.FloppyDisk}"
+                           FontFamily="Phosphor" FontSize="20"
+                           TextColor="{DynamicResource ThAccentLight}"
+                           VerticalOptions="Center" />
+                    <Label Text="添加文件"
+                           FontFamily="NunitoBold" FontSize="15"
+                           TextColor="{DynamicResource ThAccentLight}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
+        </Grid>
+
+    </Grid>
+
+</ContentPage>

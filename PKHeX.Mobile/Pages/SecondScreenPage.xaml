@@ -1,0 +1,842 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:skia="clr-namespace:SkiaSharp.Views.Maui.Controls;assembly=SkiaSharp.Views.Maui.Controls"
+             xmlns:theme="clr-namespace:PKHeX.Mobile.Theme"
+             x:Class="PKHeX.Mobile.Pages.SecondScreenPage"
+             BackgroundColor="{DynamicResource ThPageBg}"
+             Shell.NavBarIsVisible="False">
+
+    <Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  MODE A — Box grid (driven by GamePage)               -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="BoxGridPanel" RowDefinitions="Auto,*,Auto"
+              BackgroundColor="{DynamicResource ThPageBg}">
+
+            <!-- Box navigation header -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Padding="16,12,16,8">
+                <Border StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Label Text="{x:Static theme:Ph.CaretLeft}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Column="1" HorizontalOptions="Center" Spacing="1">
+                    <Label x:Name="BoxNameLabel"
+                           FontFamily="QuicksandExtraBold" FontSize="18"
+                           TextColor="{DynamicResource ThTextPrimary}" HorizontalTextAlignment="Center" />
+                    <Label Text="右摇杆 左右换箱  |  R1/L1 进银行" FontFamily="Nunito" FontSize="9"
+                           TextColor="{DynamicResource ThTextHint}" HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+                <Border Grid.Column="2" StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Label Text="{x:Static theme:Ph.CaretRight}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+            </Grid>
+
+            <!-- Box grid canvas -->
+            <skia:SKCanvasView Grid.Row="1" x:Name="BoxCanvas" PaintSurface="OnBoxPaint" />
+
+            <!-- Info bar -->
+            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Padding="16,8,16,12">
+                <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                    <Label x:Name="InfoSpeciesNum" FontFamily="Nunito" FontSize="12"
+                           TextColor="{DynamicResource ThTextSecondary}" />
+                    <Label x:Name="InfoSpeciesName" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="{DynamicResource ThTextPrimary}" />
+                </HorizontalStackLayout>
+                <HorizontalStackLayout Grid.Column="1" Spacing="10" VerticalOptions="Center">
+                    <HorizontalStackLayout Spacing="3">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                WidthRequest="20" HeightRequest="20">
+                            <Label Text="o" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#34D990"
+                                   HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Text="选择" FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="3">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                WidthRequest="20" HeightRequest="20">
+                            <Label Text="Y" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#6BABFF"
+                                   HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Text="抓取" FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="3">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                WidthRequest="20" HeightRequest="20">
+                            <Label Text="o" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#FF6B9D"
+                                   HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Text="返回" FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="3">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                WidthRequest="20" HeightRequest="20">
+                            <Label Text="≡" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#F0C040"
+                                   HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Text="保存" FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </HorizontalStackLayout>
+            </Grid>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  MODE C — Bank grid (driven by BankViewPage)          -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="BankGridPanel" IsVisible="False"
+              RowDefinitions="Auto,*,Auto"
+              BackgroundColor="{DynamicResource ThPageBg}">
+
+            <!-- Header -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Padding="16,12,16,8">
+                <Border StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Label Text="{x:Static theme:Ph.CaretLeft}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Column="1" HorizontalOptions="Center" Spacing="1">
+                    <Label x:Name="BankGridNameLabel"
+                           FontFamily="QuicksandExtraBold" FontSize="18"
+                           TextColor="{DynamicResource ThTextPrimary}" HorizontalTextAlignment="Center" />
+                    <Label x:Name="BankGridIndexLabel" FontFamily="Nunito" FontSize="9"
+                           TextColor="{DynamicResource ThTextHint}" HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+                <Border Grid.Column="2" StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Label Text="{x:Static theme:Ph.CaretRight}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+            </Grid>
+
+            <!-- Bank grid canvas -->
+            <skia:SKCanvasView Grid.Row="1" x:Name="BankCanvas" PaintSurface="OnBankPaint" />
+
+            <!-- Info bar -->
+            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Padding="16,8,16,12">
+                <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                    <Label x:Name="BankInfoSpeciesNum" FontFamily="Nunito" FontSize="12"
+                           TextColor="{DynamicResource ThTextSecondary}" />
+                    <Label x:Name="BankInfoSpeciesName" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="{DynamicResource ThTextPrimary}" />
+                </HorizontalStackLayout>
+                <HorizontalStackLayout Grid.Column="1" Spacing="10" VerticalOptions="Center">
+                    <HorizontalStackLayout Spacing="3">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                WidthRequest="20" HeightRequest="20">
+                            <Label Text="X" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#A78BFA"
+                                   HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Text="信息" FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="3">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                WidthRequest="20" HeightRequest="20">
+                            <Label Text="o" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#FF6B9D"
+                                   HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Text="返回" FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </HorizontalStackLayout>
+            </Grid>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  MODE E — Intro reel (pre-wizard)                   -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="ReelPanel" IsVisible="False"
+              RowDefinitions="*,Auto,Auto"
+              BackgroundColor="{DynamicResource ThSettingsBg}">
+
+            <!-- Headline + subtext + staggered bullets -->
+            <VerticalStackLayout Grid.Row="0" VerticalOptions="Center"
+                                 HorizontalOptions="Fill" Padding="28,0" Spacing="10">
+                <Label x:Name="ReelHeadlineLabel"
+                       Text=""
+                       FontFamily="NunitoBold" FontSize="26"
+                       TextColor="{DynamicResource ThTextPrimary}"
+                       HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                <Label x:Name="ReelSubtextLabel"
+                       Text=""
+                       FontSize="15" TextColor="{DynamicResource ThTextSecondary}"
+                       HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                <!-- Bullet details — opacity-animated per slide -->
+                <VerticalStackLayout Spacing="5" Margin="0,10,0,0">
+                    <Label x:Name="ReelBullet0" Text="" Opacity="0"
+                           FontSize="13" TextColor="{DynamicResource ThTextDim}"
+                           HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                    <Label x:Name="ReelBullet1" Text="" Opacity="0"
+                           FontSize="13" TextColor="{DynamicResource ThTextDim}"
+                           HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                    <Label x:Name="ReelBullet2" Text="" Opacity="0"
+                           FontSize="13" TextColor="{DynamicResource ThTextDim}"
+                           HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+
+            <!-- Progress bar -->
+            <ProgressBar x:Name="ReelProgressBar" Grid.Row="1"
+                         Progress="0"
+                         ProgressColor="{DynamicResource ThAccent}"
+                         HeightRequest="3"
+                         Margin="24,0,24,16" />
+
+            <!-- Skip button -->
+            <Border Grid.Row="2"
+                    StrokeShape="RoundRectangle 10"
+                    BackgroundColor="{DynamicResource ThSettingsRow}"
+                    Stroke="{DynamicResource ThDivider}" StrokeThickness="1"
+                    Margin="24,0,24,24" Padding="0" HeightRequest="44">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnReelSkipTapped" />
+                </Border.GestureRecognizers>
+                <Label Text="跳过 →" FontFamily="NunitoBold" FontSize="15"
+                       TextColor="{DynamicResource ThTextSecondary}"
+                       HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
+
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  MODE D — Welcome wizard                             -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="WelcomePanel" IsVisible="False"
+              RowDefinitions="Auto,*,Auto"
+              BackgroundColor="{DynamicResource ThSettingsBg}">
+
+            <!-- Header -->
+            <VerticalStackLayout Grid.Row="0" Padding="20,18,20,10" Spacing="2">
+                <Label x:Name="WelcomeStepHeader"
+                       Text="选择主题风格"
+                       FontFamily="NunitoBold" FontSize="22"
+                       TextColor="{DynamicResource ThTextPrimary}" />
+                <Label x:Name="WelcomeStepSubtitle"
+                       Text="第 1 步 / 共 3 步"
+                       FontSize="13" TextColor="{DynamicResource ThTextSecondary}" />
+            </VerticalStackLayout>
+
+            <!-- Step panels (overlapping, toggled per step) -->
+            <Grid Grid.Row="1">
+
+                <!-- ─── Step 0: Theme selection ─── -->
+                <Grid x:Name="WelcomeStep0Panel" RowDefinitions="*,Auto" Padding="16,0">
+                    <!-- Two large theme cards side-by-side -->
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="12" VerticalOptions="Center">
+
+                        <!-- Dark card -->
+                        <Border x:Name="ThemeCardDark" Grid.Column="0"
+                                StrokeShape="RoundRectangle 14"
+                                BackgroundColor="{DynamicResource ThSettingsRow}"
+                                Stroke="{DynamicResource ThAccent}" StrokeThickness="2"
+                                Padding="0" HeightRequest="140">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnDarkThemeTapped" />
+                            </Border.GestureRecognizers>
+                            <VerticalStackLayout Spacing="10" VerticalOptions="Center" HorizontalOptions="Center">
+                                <Label Text="&#xE45B;" FontFamily="Phosphor" FontSize="42"
+                                       TextColor="{DynamicResource ThAccent}"
+                                       HorizontalOptions="Center" />
+                                <Label Text="深色" FontFamily="NunitoBold" FontSize="16"
+                                       TextColor="{DynamicResource ThTextPrimary}"
+                                       HorizontalOptions="Center" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Light card -->
+                        <Border x:Name="ThemeCardLight" Grid.Column="1"
+                                StrokeShape="RoundRectangle 14"
+                                BackgroundColor="{DynamicResource ThSettingsRow}"
+                                Stroke="Transparent" StrokeThickness="2"
+                                Padding="0" HeightRequest="140">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnLightThemeTapped" />
+                            </Border.GestureRecognizers>
+                            <VerticalStackLayout Spacing="10" VerticalOptions="Center" HorizontalOptions="Center">
+                                <Label Text="&#xE4B7;" FontFamily="Phosphor" FontSize="42"
+                                       TextColor="{DynamicResource ThTextSecondary}"
+                                       HorizontalOptions="Center" />
+                                <Label Text="浅色" FontFamily="NunitoBold" FontSize="16"
+                                       TextColor="{DynamicResource ThTextPrimary}"
+                                       HorizontalOptions="Center" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <!-- ─── Step 1: Emulator setup ─── -->
+                <Grid x:Name="WelcomeStep1Panel" IsVisible="False"
+                      RowDefinitions="*,Auto" Padding="16,0">
+                    <VerticalStackLayout Grid.Row="0" Spacing="8" VerticalOptions="Center">
+
+                        <!-- Eden row -->
+                        <Border x:Name="WelcomeRow_Eden"
+                                StrokeShape="RoundRectangle 6"
+                                BackgroundColor="{DynamicResource ThSettingsRow}"
+                                Stroke="Transparent" Padding="12,10">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnWelcomeEdenTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                <Label Grid.Column="0" Text="&#xE59E;" FontFamily="Phosphor"
+                                       FontSize="22" TextColor="{DynamicResource ThAccent}"
+                                       VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                    <Label Text="Eden（Switch）" FontFamily="NunitoBold" FontSize="14"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label Text="第 8/9 世代存档" FontSize="11"
+                                           TextColor="{DynamicResource ThTextSecondary}" />
+                                </VerticalStackLayout>
+                                <Label x:Name="WelcomeEdenStatus" Grid.Column="2"
+                                       Text="○" FontSize="18"
+                                       TextColor="{DynamicResource ThTextDim}"
+                                       VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Azahar row -->
+                        <Border x:Name="WelcomeRow_Azahar"
+                                StrokeShape="RoundRectangle 6"
+                                BackgroundColor="{DynamicResource ThSettingsRow}"
+                                Stroke="Transparent" Padding="12,10">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnWelcomeAzaharTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                <Label Grid.Column="0" Text="&#xE59E;" FontFamily="Phosphor"
+                                       FontSize="22" TextColor="#A78BFA"
+                                       VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                    <Label Text="Azahar（3DS）" FontFamily="NunitoBold" FontSize="14"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label Text="第 6/7 世代存档" FontSize="11"
+                                           TextColor="{DynamicResource ThTextSecondary}" />
+                                </VerticalStackLayout>
+                                <Label x:Name="WelcomeAzaharStatus" Grid.Column="2"
+                                       Text="○" FontSize="18"
+                                       TextColor="{DynamicResource ThTextDim}"
+                                       VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- MelonDS row -->
+                        <Border x:Name="WelcomeRow_MelonDS"
+                                StrokeShape="RoundRectangle 6"
+                                BackgroundColor="{DynamicResource ThSettingsRow}"
+                                Stroke="Transparent" Padding="12,10">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnWelcomeMelonDSTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                <Label Grid.Column="0" Text="&#xE59E;" FontFamily="Phosphor"
+                                       FontSize="22" TextColor="#34D990"
+                                       VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                    <Label Text="MelonDS（DS）" FontFamily="NunitoBold" FontSize="14"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label Text="第 4/5 世代存档" FontSize="11"
+                                           TextColor="{DynamicResource ThTextSecondary}" />
+                                </VerticalStackLayout>
+                                <Label x:Name="WelcomeMelonDSStatus" Grid.Column="2"
+                                       Text="○" FontSize="18"
+                                       TextColor="{DynamicResource ThTextDim}"
+                                       VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- RetroArch row -->
+                        <Border x:Name="WelcomeRow_RetroArch"
+                                StrokeShape="RoundRectangle 6"
+                                BackgroundColor="{DynamicResource ThSettingsRow}"
+                                Stroke="Transparent" Padding="12,10">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnWelcomeRetroArchTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                <Label Grid.Column="0" Text="&#xE59E;" FontFamily="Phosphor"
+                                       FontSize="22" TextColor="#FF9F43"
+                                       VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                    <Label Text="RetroArch（GBA/GBC）" FontFamily="NunitoBold" FontSize="14"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label Text="第 1/2/3 世代存档（.srm）" FontSize="11"
+                                           TextColor="{DynamicResource ThTextSecondary}" />
+                                </VerticalStackLayout>
+                                <Label x:Name="WelcomeRetroArchStatus" Grid.Column="2"
+                                       Text="○" FontSize="18"
+                                       TextColor="{DynamicResource ThTextDim}"
+                                       VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Manual folder row -->
+                        <Border x:Name="WelcomeRow_Manual"
+                                StrokeShape="RoundRectangle 6"
+                                BackgroundColor="{DynamicResource ThSettingsRow}"
+                                Stroke="Transparent" Padding="12,10">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnWelcomeManualTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                <Label Grid.Column="0" Text="&#xE3B4;" FontFamily="Phosphor"
+                                       FontSize="22" TextColor="{DynamicResource ThTextSecondary}"
+                                       VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                    <Label Text="浏览文件夹" FontFamily="NunitoBold" FontSize="14"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label Text="选择任意含存档的文件夹" FontSize="11"
+                                           TextColor="{DynamicResource ThTextSecondary}" />
+                                </VerticalStackLayout>
+                                <Label Grid.Column="2" Text="›" FontSize="20"
+                                       TextColor="{DynamicResource ThAccent}"
+                                       VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                    </VerticalStackLayout>
+                </Grid>
+
+                <!-- ─── Step 2: Done ─── -->
+                <Grid x:Name="WelcomeStep2Panel" IsVisible="False" Padding="16,0">
+                    <VerticalStackLayout Spacing="16" VerticalOptions="Center" HorizontalOptions="Center">
+                        <Label Text="&#xE33A;" FontFamily="PhosphorFill" FontSize="72"
+                               TextColor="#34D990" HorizontalOptions="Center" />
+                        <Label Text="全部设置完成！" FontFamily="NunitoBold" FontSize="26"
+                               TextColor="{DynamicResource ThTextPrimary}"
+                               HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                        <Label x:Name="WelcomeFoundSummary"
+                               Text="可以开始编辑宝可梦了。"
+                               FontSize="14" TextColor="{DynamicResource ThTextSecondary}"
+                               HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                </Grid>
+
+            </Grid>
+
+            <!-- Bottom button bar -->
+            <Grid Grid.Row="2" Padding="16,10,16,20">
+
+                <!-- Step 0 buttons -->
+                <Border x:Name="WelcomeBtn_NextStep0"
+                        StrokeShape="RoundRectangle 10" Stroke="Transparent" Padding="0"
+                        HeightRequest="48">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#3B8BFF" Offset="0" />
+                            <GradientStop Color="#1A5AFF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnWelcomeNextStep0Tapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="下一页 →" FontFamily="NunitoBold" FontSize="16"
+                           TextColor="White"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+
+                <!-- Step 1 buttons -->
+                <Grid x:Name="WelcomeBtns_Step1" IsVisible="False"
+                      ColumnDefinitions="*,*" ColumnSpacing="10">
+                    <Border Grid.Column="0"
+                            StrokeShape="RoundRectangle 10"
+                            BackgroundColor="{DynamicResource ThSettingsRow}"
+                            Stroke="{DynamicResource ThDivider}" StrokeThickness="1"
+                            Padding="0" HeightRequest="48">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnWelcomeSkipTapped" />
+                        </Border.GestureRecognizers>
+                        <Label Text="跳过" FontFamily="NunitoBold" FontSize="16"
+                               TextColor="{DynamicResource ThTextSecondary}"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <Border x:Name="WelcomeBtn_NextStep1" Grid.Column="1"
+                            StrokeShape="RoundRectangle 10" Stroke="Transparent" Padding="0"
+                            HeightRequest="48" Opacity="0.5">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#3B8BFF" Offset="0" />
+                                <GradientStop Color="#1A5AFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer x:Name="NextStep1Recognizer" Tapped="OnWelcomeNextStep1Tapped" />
+                        </Border.GestureRecognizers>
+                        <Label Text="下一页 →" FontFamily="NunitoBold" FontSize="16"
+                               TextColor="White"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                </Grid>
+
+                <!-- Step 2 button -->
+                <Border x:Name="WelcomeBtn_GetStarted" IsVisible="False"
+                        StrokeShape="RoundRectangle 10" Stroke="Transparent" Padding="0"
+                        HeightRequest="48">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#34D990" Offset="0" />
+                            <GradientStop Color="#1AB873" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnWelcomeGetStartedTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="开始使用" FontFamily="NunitoBold" FontSize="16"
+                           TextColor="White"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+
+            </Grid>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  MODE F — Bank box management menu                    -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="BankManagePanel" IsVisible="False"
+              RowDefinitions="Auto,*,Auto"
+              BackgroundColor="{DynamicResource ThSettingsBg}">
+
+            <!-- Header -->
+            <VerticalStackLayout Grid.Row="0" Padding="20,18,20,10" Spacing="2">
+                <Label Text="管理箱子"
+                       FontFamily="NunitoBold" FontSize="22"
+                       TextColor="{DynamicResource ThTextPrimary}" />
+                <Label x:Name="BankManageSubtitle"
+                       FontSize="13" TextColor="{DynamicResource ThTextSecondary}" />
+            </VerticalStackLayout>
+
+            <!-- Menu rows -->
+            <VerticalStackLayout Grid.Row="1" Spacing="8" Padding="16,0" VerticalOptions="Center">
+
+                <!-- Rename -->
+                <Border x:Name="BankManageRow_Rename"
+                        StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThSettingsRow}"
+                        Stroke="Transparent" Padding="16,14">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Label Grid.Column="0" Text="&#xE3A6;" FontFamily="Phosphor"
+                               FontSize="24" TextColor="{DynamicResource ThAccent}"
+                               VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                            <Label Text="重命名箱子" FontFamily="NunitoBold" FontSize="15"
+                                   TextColor="{DynamicResource ThTextPrimary}" />
+                            <Label Text="修改当前箱子的名称"
+                                   FontSize="11" TextColor="{DynamicResource ThTextSecondary}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <!-- Add Box -->
+                <Border x:Name="BankManageRow_Add"
+                        StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThSettingsRow}"
+                        Stroke="Transparent" Padding="16,14">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Label Grid.Column="0" Text="&#xE252;" FontFamily="Phosphor"
+                               FontSize="24" TextColor="#34D990"
+                               VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                            <Label Text="新建箱子" FontFamily="NunitoBold" FontSize="15"
+                                   TextColor="{DynamicResource ThTextPrimary}" />
+                            <Label Text="在银行末尾追加一个空箱子"
+                                   FontSize="11" TextColor="{DynamicResource ThTextSecondary}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <!-- Remove Box -->
+                <Border x:Name="BankManageRow_Remove"
+                        StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThSettingsRow}"
+                        Stroke="Transparent" Padding="16,14">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Label Grid.Column="0" Text="&#xE4C4;" FontFamily="Phosphor"
+                               FontSize="24" TextColor="#FF6B6B"
+                               VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                            <Label Text="删除箱子" FontFamily="NunitoBold" FontSize="15"
+                                   TextColor="{DynamicResource ThTextPrimary}" />
+                            <Label x:Name="BankManageRemoveHint"
+                                   FontSize="11" TextColor="{DynamicResource ThTextSecondary}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+            </VerticalStackLayout>
+
+            <!-- Bottom: hint bar -->
+            <HorizontalStackLayout Grid.Row="2" Spacing="16"
+                                   HorizontalOptions="Center" Padding="0,0,0,20">
+                <HorizontalStackLayout Spacing="6">
+                    <Border StrokeShape="RoundRectangle 5"
+                            BackgroundColor="{DynamicResource ThHintBg}"
+                            Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                            WidthRequest="22" HeightRequest="22">
+                        <Label Text="o" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#34D990"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <Label Text="确认" FontFamily="Nunito" FontSize="11"
+                           TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+                <HorizontalStackLayout Spacing="6">
+                    <Border StrokeShape="RoundRectangle 5"
+                            BackgroundColor="{DynamicResource ThHintBg}"
+                            Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                            WidthRequest="22" HeightRequest="22">
+                        <Label Text="o" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#FF6B9D"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <Label Text="关闭" FontFamily="Nunito" FontSize="11"
+                           TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </HorizontalStackLayout>
+
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  MODE G — Pokédex stats                               -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="DexStatsPanel" IsVisible="False"
+              RowDefinitions="Auto,Auto,Auto,*"
+              BackgroundColor="{DynamicResource ThSettingsBg}"
+              Padding="20,24,20,20">
+
+            <!-- Header -->
+            <HorizontalStackLayout Grid.Row="0" Spacing="10">
+                <Label Text="&#xe466;" FontFamily="PhosphorFill" FontSize="28"
+                       TextColor="{DynamicResource ThAccent}" VerticalOptions="Center" />
+                <Label Text="Pokédex" FontFamily="NunitoBold" FontSize="26"
+                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+
+            <Label x:Name="DexTotalLabel" Grid.Row="1"
+                   FontFamily="Nunito" FontSize="14"
+                   TextColor="{DynamicResource ThTextSecondary}"
+                   Margin="0,6,0,0" />
+
+            <!-- Overall progress bar -->
+            <Grid Grid.Row="2" Margin="0,10,0,16" HeightRequest="8">
+                <Border StrokeShape="RoundRectangle 4"
+                        BackgroundColor="{DynamicResource ThSettingsRow}" />
+                <Border x:Name="DexProgressFill" StrokeShape="RoundRectangle 4"
+                        BackgroundColor="{DynamicResource ThAccent}"
+                        HorizontalOptions="Start" WidthRequest="0" />
+            </Grid>
+
+            <!-- Per-gen breakdown -->
+            <ScrollView Grid.Row="3">
+                <VerticalStackLayout x:Name="DexGenList" Spacing="8" />
+            </ScrollView>
+
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  MODE B — Main menu: save list + action bar           -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="MainMenuPanel" IsVisible="False"
+              RowDefinitions="Auto,*,Auto"
+              BackgroundColor="{DynamicResource ThPageBg}">
+
+            <!-- Header -->
+            <Grid Grid.Row="0" Padding="18,14,18,8" ColumnDefinitions="*,Auto">
+                <Label Text="存档文件" FontFamily="Quicksand" FontSize="12"
+                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.5" VerticalOptions="Center" />
+                <Border Grid.Column="1" StrokeShape="RoundRectangle 6"
+                        BackgroundColor="{DynamicResource ThBadgeBg}" Stroke="Transparent" Padding="10,3">
+                    <Label x:Name="MenuSaveCountLabel" Text="0 saves"
+                           FontFamily="NunitoBold" FontSize="10"
+                           TextColor="{DynamicResource ThTextHint}" />
+                </Border>
+            </Grid>
+
+            <!-- Save card list -->
+            <CollectionView x:Name="MenuSavesList" Grid.Row="1"
+                            SelectionMode="None"
+                            BackgroundColor="Transparent"
+                            Margin="14,0">
+                <CollectionView.EmptyView>
+                    <Label Text="没有找到存档。"
+                           FontFamily="Nunito" FontSize="14"
+                           TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           Margin="24,60" HorizontalTextAlignment="Center" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,0,0,8">
+                            <Border StrokeShape="RoundRectangle 14"
+                                    BackgroundColor="{Binding CardBackground}"
+                                    Stroke="{Binding CardStroke}"
+                                    StrokeThickness="{Binding CardStrokeThickness}"
+                                    Padding="0">
+                                <Grid Padding="14,12" ColumnDefinitions="4,48,*,Auto">
+                                    <BoxView Grid.Column="0" Color="{Binding GameColorLight}"
+                                             WidthRequest="3" VerticalOptions="FillAndExpand"
+                                             Margin="-14,0,0,0" IsVisible="{Binding IsLoaded}" />
+                                    <Grid Grid.Column="1" WidthRequest="48" HeightRequest="48" VerticalOptions="Center">
+                                        <Border StrokeShape="RoundRectangle 13" Stroke="Transparent"
+                                                IsVisible="{Binding HasNoIcon}">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="{Binding GameColorDark}" Offset="0" />
+                                                    <GradientStop Color="{Binding GameColorLight}" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <Label Text="{Binding GameShortName}" TextColor="White"
+                                                   FontFamily="QuicksandExtraBold" FontSize="15"
+                                                   HorizontalOptions="Center" VerticalOptions="Center"
+                                                   HorizontalTextAlignment="Center" />
+                                        </Border>
+                                        <Border StrokeShape="RoundRectangle 13" Stroke="Transparent"
+                                                IsVisible="{Binding HasIcon}">
+                                            <Image Source="{Binding IconSource}" Aspect="AspectFill" />
+                                        </Border>
+                                    </Grid>
+                                    <VerticalStackLayout Grid.Column="2" Margin="14,0,0,0" Spacing="1" VerticalOptions="Center">
+                                        <Label Text="{Binding TrainerName}" FontFamily="NunitoExtraBold" FontSize="16"
+                                               TextColor="{Binding TextPrimary}" />
+                                        <Label Text="{Binding VersionLabel}" FontFamily="Nunito" FontSize="12"
+                                               TextColor="{Binding TextSecondary}" />
+                                        <Label Text="{Binding DetailLine}" FontFamily="Nunito" FontSize="10.5"
+                                               TextColor="{Binding TextDim}" />
+                                    </VerticalStackLayout>
+                                    <Ellipse Grid.Column="3" Fill="#34D990"
+                                             WidthRequest="9" HeightRequest="9"
+                                             VerticalOptions="Center" IsVisible="{Binding IsLoaded}" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <!-- Action bar -->
+            <VerticalStackLayout Grid.Row="2" Padding="14,10,14,14" Spacing="10">
+                <Border x:Name="Menu_OpenBoxes"
+                        StrokeShape="RoundRectangle 14"
+                        Stroke="Transparent" StrokeThickness="1.5"
+                        Padding="0" HeightRequest="48">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#EAF5FF" Offset="0" />
+                            <GradientStop Color="#CCE8FF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Label Text="打开箱子" FontFamily="NunitoExtraBold" FontSize="15"
+                           TextColor="#1A5A96" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
+                    <Border x:Name="Menu_Search" Grid.Column="0" StrokeShape="RoundRectangle 8"
+                            BackgroundColor="{DynamicResource ThCardBg}"
+                            Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                            Padding="0" HeightRequest="70">
+                        <VerticalStackLayout Spacing="5" VerticalOptions="Center" HorizontalOptions="Center">
+                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="#1FA78BFA"
+                                    WidthRequest="34" HeightRequest="34" HorizontalOptions="Center">
+                                <Label Text="{x:Static theme:Ph.MagnifyingGlass}" FontFamily="Phosphor"
+                                       FontSize="20" TextColor="#A78BFA"
+                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="搜索" FontFamily="NunitoBold" FontSize="10"
+                                   TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border x:Name="Menu_Gifts" Grid.Column="1" StrokeShape="RoundRectangle 8"
+                            BackgroundColor="{DynamicResource ThCardBg}"
+                            Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                            Padding="0" HeightRequest="70">
+                        <VerticalStackLayout Spacing="5" VerticalOptions="Center" HorizontalOptions="Center">
+                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="#1FFF6B9D"
+                                    WidthRequest="34" HeightRequest="34" HorizontalOptions="Center">
+                                <Label Text="{x:Static theme:Ph.Gift}" FontFamily="Phosphor"
+                                       FontSize="20" TextColor="#FF6B9D"
+                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="神秘礼物" FontFamily="NunitoBold" FontSize="10"
+                                   TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border x:Name="Menu_Export" Grid.Column="2" StrokeShape="RoundRectangle 8"
+                            BackgroundColor="{DynamicResource ThCardBg}"
+                            Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                            Padding="0" HeightRequest="70">
+                        <VerticalStackLayout Spacing="5" VerticalOptions="Center" HorizontalOptions="Center">
+                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="#1F34D990"
+                                    WidthRequest="34" HeightRequest="34" HorizontalOptions="Center">
+                                <Label Text="{x:Static theme:Ph.Export}" FontFamily="Phosphor"
+                                       FontSize="20" TextColor="#FF9F43"
+                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="导出" FontFamily="NunitoBold" FontSize="10"
+                                   TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border x:Name="Menu_Bank" Grid.Column="3" StrokeShape="RoundRectangle 8"
+                            BackgroundColor="{DynamicResource ThCardBg}"
+                            Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                            Padding="0" HeightRequest="70">
+                        <VerticalStackLayout Spacing="5" VerticalOptions="Center" HorizontalOptions="Center">
+                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="#1FA78BFA"
+                                    WidthRequest="34" HeightRequest="34" HorizontalOptions="Center">
+                                <Label Text="{x:Static theme:Ph.Bank}" FontFamily="PhosphorFill"
+                                       FontSize="20" TextColor="#34D990"
+                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="银行" FontFamily="NunitoBold" FontSize="10"
+                                   TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border x:Name="Menu_Dex" Grid.Column="4" StrokeShape="RoundRectangle 8"
+                            BackgroundColor="{DynamicResource ThCardBg}"
+                            Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                            Padding="0" HeightRequest="70">
+                        <VerticalStackLayout Spacing="5" VerticalOptions="Center" HorizontalOptions="Center">
+                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent"
+                                    BackgroundColor="{DynamicResource ThIconBgPurple}"
+                                    WidthRequest="34" HeightRequest="34" HorizontalOptions="Center">
+                                <Label Text="{x:Static theme:Ph.Stack}" FontFamily="Phosphor"
+                                       FontSize="20" TextColor="#A855E2"
+                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="图鉴" FontFamily="NunitoBold" FontSize="10"
+                                   TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+            </VerticalStackLayout>
+
+        </Grid>
+
+    </Grid>
+</ContentPage>

@@ -1,0 +1,946 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:skia="clr-namespace:SkiaSharp.Views.Maui.Controls;assembly=SkiaSharp.Views.Maui.Controls"
+             xmlns:theme="clr-namespace:PKHeX.Mobile.Theme"
+             xmlns:svc="clr-namespace:PKHeX.Mobile.Services"
+             x:Class="PKHeX.Mobile.Pages.GamePage"
+             Shell.NavBarIsVisible="False">
+
+    <!-- Root: top screen / bottom screen, with floating menu overlay -->
+    <!-- ColumnDefinitions used for landscape single-screen two-column layout;
+         in portrait/Thor one column is always collapsed to 0. -->
+    <Grid x:Name="RootGrid" RowDefinitions="*,*" ColumnDefinitions="*,2*"
+          RowSpacing="2" ColumnSpacing="2"
+          BackgroundColor="{DynamicResource ThRootBg}">
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  TOP SCREEN — idle: trainer info  /  selected: detail  -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="TopScreenPanel" Grid.Row="0"
+              BackgroundColor="{DynamicResource ThTopScreenBg}">
+
+            <!-- Background image (dark theme only) -->
+            <Image x:Name="SpriteBgImage" Source="sprite_bg.jpg" Aspect="AspectFill" />
+
+            <!-- Background canvas overlay (gradients, ambient glow) -->
+            <skia:SKCanvasView x:Name="TopBgCanvas"
+                               PaintSurface="OnTopBgPaint" />
+
+            <!-- ── IDLE STATE — Trainer Card ── -->
+            <Grid x:Name="TopIdlePanel" Padding="20,14"
+                  ColumnDefinitions="Auto,14,*,Auto">
+
+                <!-- Trainer game icon (rounded square) -->
+                <Border Grid.Column="0"
+                        StrokeShape="RoundRectangle 10"
+                        Stroke="#0FFFFFFF" StrokeThickness="1"
+                        WidthRequest="68" HeightRequest="68"
+                        VerticalOptions="Center">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop x:Name="TrainerCircleGrad0" Color="#26394880" Offset="0" />
+                            <GradientStop x:Name="TrainerCircleGrad1" Color="#1AA78BFA" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Image x:Name="TrainerGameIcon" Aspect="AspectFill"
+                           WidthRequest="68" HeightRequest="68"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+
+                <!-- Trainer info -->
+                <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="4">
+                    <Label x:Name="TrainerNameLabel"
+                           FontFamily="NunitoExtraBold" FontSize="24"
+                           TextColor="{DynamicResource ThTextPrimary}" MaxLines="1"
+                           LineBreakMode="TailTruncation" />
+                    <Label x:Name="SaveGameLabel"
+                           FontFamily="Nunito" FontSize="13"
+                           TextColor="{DynamicResource ThTextSecondary}" MaxLines="1"
+                           LineBreakMode="TailTruncation" />
+                    <!-- 旧的四项统计已按新顶部样式隐藏（保留控件供代码赋值） -->
+                    <HorizontalStackLayout IsVisible="False" Spacing="20" Margin="0,6,0,0">
+                        <VerticalStackLayout IsVisible="False">
+                            <Label x:Name="TrainerTIDLabel" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout IsVisible="False">
+                            <Label x:Name="TrainerPokedexLabel" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout IsVisible="False">
+                            <Label x:Name="TrainerPlaytimeLabel" />
+                        </VerticalStackLayout>
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+
+                <!-- 右上角：银行 ▸ -->
+                <Border x:Name="ToBankBtn" Grid.Column="3" StrokeShape="RoundRectangle 8"
+                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        Padding="12,10" VerticalOptions="Center">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnToBankTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static svc:UiText.BankArrow}" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+
+                <!-- 旧的右侧箱子信息（保留控件，隐藏） -->
+                <VerticalStackLayout Grid.Column="3" IsVisible="False" VerticalOptions="Center" Spacing="2">
+                    <Label x:Name="IdleBoxNameLabel" />
+                    <Label x:Name="IdleBoxFillLabel" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <!-- ── SELECTED STATE — 3-column Pokémon detail ── -->
+            <Grid x:Name="TopSelectedPanel" IsVisible="False"
+                  RowDefinitions="*"
+                  ColumnDefinitions="3.5*,4.5*,3*" Padding="8,6">
+
+                <!-- Landscape-phone cycle indicator (3 dots) — spans all columns, visible only on phone landscape -->
+                <HorizontalStackLayout x:Name="LandscapeViewDots"
+                                        Grid.Column="0" Grid.ColumnSpan="3"
+                                        HorizontalOptions="Center" VerticalOptions="End"
+                                        Spacing="7" Margin="0,0,0,10"
+                                        IsVisible="False" InputTransparent="True">
+                    <Ellipse x:Name="ViewDot0" WidthRequest="7" HeightRequest="7" Fill="White" />
+                    <Ellipse x:Name="ViewDot1" WidthRequest="7" HeightRequest="7" Fill="White" Opacity="0.35" />
+                    <Ellipse x:Name="ViewDot2" WidthRequest="7" HeightRequest="7" Fill="White" Opacity="0.35" />
+                </HorizontalStackLayout>
+
+                <!-- Column 0: Stat radar / Compatibility list -->
+                <Grid Grid.Column="0">
+                    <!-- Radar (default) -->
+                    <Border x:Name="RadarBorder"
+                            StrokeShape="RoundRectangle 16"
+                            BackgroundColor="{DynamicResource ThRadarBg}"
+                            Stroke="{DynamicResource ThRadarStroke}"
+                            StrokeThickness="1"
+                            Margin="4"
+                            VerticalOptions="Center">
+                        <skia:SKCanvasView x:Name="RadarCanvas"
+                                           PaintSurface="OnRadarPaint" />
+                    </Border>
+
+                    <!-- Compatibility list (shown on X) -->
+                    <Border x:Name="CompatPanel" IsVisible="False"
+                            StrokeShape="RoundRectangle 16"
+                            BackgroundColor="{DynamicResource ThRadarBg}"
+                            Stroke="{DynamicResource ThRadarStroke}"
+                            StrokeThickness="1"
+                            Margin="4"
+                            VerticalOptions="Fill">
+                        <ScrollView>
+                            <VerticalStackLayout x:Name="CompatList"
+                                                 Padding="10,8" Spacing="5">
+                                <Label Text="存档数" FontFamily="NunitoBold" FontSize="8"
+                                       TextColor="{DynamicResource ThTextDim}"
+                                       CharacterSpacing="1.2" Margin="0,0,0,2" />
+                            </VerticalStackLayout>
+                        </ScrollView>
+                    </Border>
+                </Grid>
+
+                <!-- Column 1: Sprite fills full height, type badges + name overlaid -->
+                <Grid Grid.Column="1" RowDefinitions="*" Margin="6">
+                    <!-- Sprite — declared first so it renders behind badges/name -->
+                    <skia:SKCanvasView x:Name="PreviewCanvas"
+                                       Margin="20"
+                                       PaintSurface="OnPreviewPaint" />
+                    <WebView x:Name="SpriteWebView"
+                             Margin="20"
+                             BackgroundColor="Transparent"
+                             IsVisible="False" />
+                    <HorizontalStackLayout x:Name="TypeBadgeRow"
+                                           HorizontalOptions="Center" VerticalOptions="Start"
+                                           Spacing="5" Margin="0,4,0,0" />
+                    <VerticalStackLayout x:Name="DetailNameBlock"
+                                         HorizontalOptions="Center" VerticalOptions="End"
+                                         Spacing="1" Margin="0,0,0,4">
+                        <Label x:Name="DetailSpeciesName"
+                               FontFamily="NunitoExtraBold" FontSize="15"
+                               TextColor="{DynamicResource ThTextPrimary}"
+                               HorizontalTextAlignment="Center" />
+                        <Label x:Name="DetailLevelNature"
+                               FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextPrimary}"
+                               HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                </Grid>
+
+                <!-- Column 2: Info panel (default) / Moves panel (X toggle) -->
+                <Grid Grid.Column="2" VerticalOptions="Fill">
+
+                    <!-- Info panel — hidden (moves shown by default) -->
+                    <VerticalStackLayout x:Name="DetailInfoPanel" IsVisible="False"
+                                         VerticalOptions="Center"
+                                         Spacing="8" Padding="8,14,14,14">
+                        <Label Text="INFO" FontFamily="NunitoBold" FontSize="9"
+                               TextColor="{DynamicResource ThTextPrimary}" CharacterSpacing="1.2"
+                               Margin="0,0,0,2" />
+
+                        <!-- Ability -->
+                        <Border StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="10,8">
+                            <VerticalStackLayout Spacing="1">
+                                <Label Text="ABILITY" FontFamily="NunitoBold" FontSize="8"
+                                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="0.6" />
+                                <Label x:Name="DetailAbility" FontFamily="NunitoBold" FontSize="12"
+                                       TextColor="{DynamicResource ThTextPrimary}" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Held Item -->
+                        <Border StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="10,8">
+                            <VerticalStackLayout Spacing="1">
+                                <Label Text="{x:Static svc:UiText.Items}" FontFamily="NunitoBold" FontSize="8"
+                                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="0.6" />
+                                <Label x:Name="DetailItem" FontFamily="NunitoBold" FontSize="12"
+                                       TextColor="{DynamicResource ThTextPrimary}" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Gender / Ball -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <Border StrokeShape="RoundRectangle 10"
+                                    BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                    Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                    Padding="10,8">
+                                <VerticalStackLayout Spacing="1">
+                                    <Label Text="性别" FontFamily="NunitoBold" FontSize="8"
+                                           TextColor="{DynamicResource ThTextDim}" CharacterSpacing="0.6" />
+                                    <Label x:Name="DetailGender" FontFamily="NunitoBold" FontSize="12"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                </VerticalStackLayout>
+                            </Border>
+                            <Border Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                    BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                    Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                    Padding="10,8">
+                                <VerticalStackLayout Spacing="1">
+                                    <Label Text="精灵球" FontFamily="NunitoBold" FontSize="8"
+                                           TextColor="{DynamicResource ThTextDim}" CharacterSpacing="0.6" />
+                                    <Label x:Name="DetailBall" FontFamily="NunitoBold" FontSize="12"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </Grid>
+
+                    </VerticalStackLayout>
+
+                    <!-- Moves panel — always visible -->
+                    <VerticalStackLayout x:Name="DetailMovesPanel"
+                                         VerticalOptions="Center"
+                                         Spacing="4" Padding="8,14,14,14">
+                        <Label Text="招式" FontFamily="NunitoBold" FontSize="9"
+                               TextColor="{DynamicResource ThTextPrimary}" CharacterSpacing="1.2"
+                               Margin="0,0,0,4" />
+
+                        <Border x:Name="MoveRow0" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="8,6">
+                            <Grid ColumnDefinitions="10,*,Auto">
+                                <Ellipse x:Name="MoveDot0" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Margin="6,0,0,0">
+                                    <Label x:Name="MoveName0" FontFamily="NunitoBold" FontSize="12"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label x:Name="MoveCat0" FontFamily="Nunito" FontSize="9"
+                                           TextColor="{DynamicResource ThTextDim}" />
+                                </VerticalStackLayout>
+                                <Label x:Name="MovePP0" Grid.Column="2"
+                                       FontFamily="NunitoBold" FontSize="10"
+                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+                        <Border x:Name="MoveRow1" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="8,6">
+                            <Grid ColumnDefinitions="10,*,Auto">
+                                <Ellipse x:Name="MoveDot1" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Margin="6,0,0,0">
+                                    <Label x:Name="MoveName1" FontFamily="NunitoBold" FontSize="12"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label x:Name="MoveCat1" FontFamily="Nunito" FontSize="9"
+                                           TextColor="{DynamicResource ThTextDim}" />
+                                </VerticalStackLayout>
+                                <Label x:Name="MovePP1" Grid.Column="2"
+                                       FontFamily="NunitoBold" FontSize="10"
+                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+                        <Border x:Name="MoveRow2" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="8,6">
+                            <Grid ColumnDefinitions="10,*,Auto">
+                                <Ellipse x:Name="MoveDot2" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Margin="6,0,0,0">
+                                    <Label x:Name="MoveName2" FontFamily="NunitoBold" FontSize="12"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label x:Name="MoveCat2" FontFamily="Nunito" FontSize="9"
+                                           TextColor="{DynamicResource ThTextDim}" />
+                                </VerticalStackLayout>
+                                <Label x:Name="MovePP2" Grid.Column="2"
+                                       FontFamily="NunitoBold" FontSize="10"
+                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+                        <Border x:Name="MoveRow3" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="8,6">
+                            <Grid ColumnDefinitions="10,*,Auto">
+                                <Ellipse x:Name="MoveDot3" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Margin="6,0,0,0">
+                                    <Label x:Name="MoveName3" FontFamily="NunitoBold" FontSize="12"
+                                           TextColor="{DynamicResource ThTextPrimary}" />
+                                    <Label x:Name="MoveCat3" FontFamily="Nunito" FontSize="9"
+                                           TextColor="{DynamicResource ThTextDim}" />
+                                </VerticalStackLayout>
+                                <Label x:Name="MovePP3" Grid.Column="2"
+                                       FontFamily="NunitoBold" FontSize="10"
+                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+
+                </Grid>
+
+            </Grid>
+
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  BOTTOM SCREEN — box grid / items                    -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="BottomGrid" Grid.Row="1" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+              BackgroundColor="{DynamicResource ThPageBg}"
+              IsClippedToBounds="True">
+
+            <!-- Compact trainer strip — phone single-screen only, hidden on Thor -->
+            <Grid x:Name="PhoneTrainerStrip" Grid.Row="0" IsVisible="False"
+                  ColumnDefinitions="Auto,12,*,Auto"
+                  Padding="14,10,10,6"
+                  BackgroundColor="{DynamicResource ThTopScreenBg}">
+
+                <Border Grid.Column="0" StrokeShape="RoundRectangle 9"
+                        Stroke="#0FFFFFFF" StrokeThickness="1"
+                        WidthRequest="58" HeightRequest="58" VerticalOptions="Center">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#26394880" Offset="0" />
+                            <GradientStop Color="#1AA78BFA" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Image x:Name="PhoneGameIcon"
+                           WidthRequest="58" HeightRequest="58"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           Aspect="AspectFill" />
+                </Border>
+
+                <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="3">
+                    <Label x:Name="PhoneTrainerName"
+                           FontFamily="NunitoExtraBold" FontSize="22"
+                           TextColor="{DynamicResource ThTextPrimary}" MaxLines="1"
+                           LineBreakMode="TailTruncation" />
+                    <Label x:Name="PhoneGameLabel"
+                           FontFamily="Nunito" FontSize="12"
+                           TextColor="{DynamicResource ThTextSecondary}" MaxLines="1"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+
+                <!-- 右上角：银行 ▸（与银行页的箱子 ▸ 呼应） -->
+                <Border Grid.Column="3" x:Name="PhoneToBankBtn" StrokeShape="RoundRectangle 8"
+                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        Padding="12,10" VerticalOptions="Center">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnToBankTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static svc:UiText.BankArrow}" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+
+                <!-- 旧的箱子计数（保留控件，隐藏） -->
+                <Label x:Name="PhoneBoxLabel" IsVisible="False" Text="1" />
+            </Grid>
+
+            <!-- Tab strip -->
+            <Grid Grid.Row="1" ColumnDefinitions="*,*" Padding="12,8,12,4" ColumnSpacing="8">
+                <Border x:Name="BoxesTab" Grid.Column="0"
+                        StrokeShape="RoundRectangle 8" Padding="0,7"
+                        BackgroundColor="{DynamicResource ThIconBgBlue}"
+                        Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBoxesTabTapped"/>
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static svc:UiText.Box}" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="{DynamicResource ThTextPrimary}"
+                           HorizontalOptions="Center"/>
+                </Border>
+                <Border x:Name="ItemsTab" Grid.Column="1"
+                        StrokeShape="RoundRectangle 8" Padding="0,7"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnItemsTabTapped"/>
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static svc:UiText.Items}" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center"/>
+                </Border>
+            </Grid>
+
+            <!-- Box navigation header -->
+            <Grid x:Name="BoxNavRow" Grid.Row="2" ColumnDefinitions="Auto,*,Auto"
+                  Padding="16,12,16,8">
+                <!-- L button -->
+                <Border x:Name="PrevBoxBtn" StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnPrevBox" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static theme:Ph.CaretLeft}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+
+                <!-- Box title -->
+                <VerticalStackLayout Grid.Column="1" HorizontalOptions="Center" Spacing="1">
+                    <Label x:Name="BoxNameLabel"
+                           FontFamily="QuicksandExtraBold" FontSize="18"
+                           TextColor="{DynamicResource ThTextPrimary}"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="{x:Static svc:UiText.BoxHintSubtitle}" FontFamily="Nunito" FontSize="9"
+                           TextColor="{DynamicResource ThTextHint}"
+                           HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+
+                <!-- R button -->
+                <Border x:Name="NextBoxBtn" Grid.Column="2"
+                        StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnNextBox" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static theme:Ph.CaretRight}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+            </Grid>
+
+            <!-- Search bar -->
+            <Border x:Name="BoxSearchRow" Grid.Row="3"
+                    StrokeShape="RoundRectangle 10"
+                    BackgroundColor="{DynamicResource ThCardBg}"
+                    Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                    Margin="12,0,12,6" Padding="0"
+                    HeightRequest="44">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Label Text="{x:Static theme:Ph.MagnifyingGlass}" FontFamily="Phosphor" FontSize="16"
+                           TextColor="{DynamicResource ThTextDim}"
+                           VerticalOptions="Center" Margin="10,0,0,0" />
+                    <Entry x:Name="SearchEntry" Grid.Column="1"
+                           Placeholder="{x:Static svc:UiText.SearchSpecies}" FontFamily="Nunito" FontSize="13"
+                           TextColor="{DynamicResource ThTextPrimary}"
+                           PlaceholderColor="{DynamicResource ThTextHint}"
+                           BackgroundColor="Transparent" Margin="4,0,8,0"
+                           ReturnType="Search"
+                           TextChanged="OnSearchTextChanged" />
+                </Grid>
+            </Border>
+
+            <!-- Box canvas -->
+            <skia:SKCanvasView Grid.Row="4"
+                               x:Name="BoxCanvas"
+                               PaintSurface="OnBoxPaintSurface"
+                               EnableTouchEvents="False">
+                <skia:SKCanvasView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnBoxTapped" />
+                </skia:SKCanvasView.GestureRecognizers>
+            </skia:SKCanvasView>
+
+            <!-- Info bar（两行：上行信息、下行提示按键，竖屏不挤在一起） -->
+            <Grid Grid.Row="5" ColumnDefinitions="*" RowDefinitions="Auto,Auto" RowSpacing="6" Padding="16,8,16,12">
+                <!-- Slot info -->
+                <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                    <Label x:Name="InfoSpeciesNum"
+                           FontFamily="Nunito" FontSize="12"
+                           TextColor="{DynamicResource ThTextSecondary}" />
+                    <Label x:Name="InfoSpeciesName"
+                           FontFamily="NunitoBold" FontSize="12" MaxLines="1" LineBreakMode="TailTruncation"
+                           TextColor="{DynamicResource ThTextPrimary}" />
+                </HorizontalStackLayout>
+
+                <!-- Gamepad hints（本身也是按键） -->
+                <ScrollView Grid.Row="1" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                    <HorizontalStackLayout x:Name="HintBadges" Spacing="8" VerticalOptions="Center">
+                    <HorizontalStackLayout Spacing="4">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                Padding="8,4">
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
+                                        StrokeThickness="0" Padding="5,2">
+                                    <Label Text="A" FontFamily="NunitoExtraBold" FontSize="9"
+                                           TextColor="#34D990"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="{x:Static svc:UiText.HintSelect}" FontFamily="Nunito" FontSize="11"
+                                       TextColor="#C8D2E8" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="4">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                Padding="8,4">
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
+                                        StrokeThickness="0" Padding="5,2">
+                                    <Label Text="Y" FontFamily="NunitoExtraBold" FontSize="9"
+                                           TextColor="#6BABFF"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="{x:Static svc:UiText.HintGrab}" FontFamily="Nunito" FontSize="11"
+                                       TextColor="#C8D2E8" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="4">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                Padding="8,4">
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
+                                        StrokeThickness="0" Padding="5,2">
+                                    <Label Text="B" FontFamily="NunitoExtraBold" FontSize="9"
+                                           TextColor="#FF6B9D"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="{x:Static svc:UiText.HintBack}" FontFamily="Nunito" FontSize="11"
+                                       TextColor="#C8D2E8" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="4">
+                        <HorizontalStackLayout.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSaveHintTapped" />
+                        </HorizontalStackLayout.GestureRecognizers>
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                Padding="8,4">
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
+                                        StrokeThickness="0" Padding="5,2">
+                                    <Label Text="≡" FontFamily="NunitoExtraBold" FontSize="9"
+                                           TextColor="#F0C040"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="{x:Static svc:UiText.HintSave}" FontFamily="Nunito" FontSize="11"
+                                       TextColor="#C8D2E8" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="4">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                Padding="8,4">
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
+                                        StrokeThickness="0" Padding="5,2">
+                                    <Label Text="R" FontFamily="NunitoExtraBold" FontSize="9"
+                                           TextColor="#60C0FF"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="{x:Static svc:UiText.HintCry}" FontFamily="Nunito" FontSize="11"
+                                       TextColor="#C8D2E8" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </HorizontalStackLayout>
+                    </HorizontalStackLayout>
+                </ScrollView>
+            </Grid>
+
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  PHONE DETAIL SHEET — single-screen Pokémon detail   -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="PhoneDetailSheet" Grid.Row="0" Grid.RowSpan="2" Grid.ColumnSpan="2"
+              BackgroundColor="Transparent"
+              InputTransparent="True">
+
+            <!-- Scrim backdrop -->
+            <BoxView x:Name="PhoneSheetScrim" BackgroundColor="#000000" Opacity="0"
+                     InputTransparent="True">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnPhoneSheetScrimTapped"/>
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <!-- Sheet panel — starts off-screen below -->
+            <Border x:Name="PhoneSheetPanel"
+                    VerticalOptions="End"
+                    TranslationY="600"
+                    StrokeShape="RoundRectangle 20,20,0,0"
+                    BackgroundColor="{DynamicResource ThActionMenuPanel}"
+                    Stroke="{DynamicResource ThActionMenuStroke}"
+                    StrokeThickness="1"
+                    Padding="16,14,16,24">
+                <Grid RowDefinitions="Auto,Auto" RowSpacing="14">
+
+                    <!-- Header: sprite + name/types/level -->
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                        <skia:SKCanvasView x:Name="PhoneSheetCanvas"
+                                           WidthRequest="90" HeightRequest="90"
+                                           PaintSurface="OnPhoneSheetSpritePaint"/>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="5">
+                            <HorizontalStackLayout x:Name="PhoneSheetTypeBadges" Spacing="5"/>
+                            <Label x:Name="PhoneSheetSpecies"
+                                   FontFamily="NunitoExtraBold" FontSize="20"
+                                   TextColor="{DynamicResource ThTextPrimary}"/>
+                            <Label x:Name="PhoneSheetLevelNature"
+                                   FontFamily="Nunito" FontSize="12"
+                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                        </VerticalStackLayout>
+
+                        <!-- 右上角竖排小按键：Y 抓取 / R3 叫声 / 存入银行 -->
+                        <VerticalStackLayout Grid.Column="2" Spacing="4"
+                                             VerticalOptions="Start" HorizontalOptions="End">
+                            <Border x:Name="PhoneSheetCryBtn" StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="{DynamicResource ThHintBg}"
+                                    Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                    Padding="6,3">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnPhoneSheetCryTapped"/>
+                                </Border.GestureRecognizers>
+                                <Label Text="R 叫声" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="#60C0FF"/>
+                            </Border>
+                            <Border x:Name="PhoneSheetGrabBtn" StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="{DynamicResource ThHintBg}"
+                                    Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                    Padding="6,3">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnPhoneSheetGrabTapped"/>
+                                </Border.GestureRecognizers>
+                                <Label Text="Y 抓取" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="#6BABFF"/>
+                            </Border>
+                            <Border x:Name="PhoneSheetDepositBtn" StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="#1B2233"
+                                    Stroke="#5A7BB5" StrokeThickness="1"
+                                    Padding="6,3">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnPhoneSheetDepositTapped"/>
+                                </Border.GestureRecognizers>
+                                <Label Text="存入银行" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="#8FB7FF"/>
+                            </Border>
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <!-- Moves + edit button -->
+                    <VerticalStackLayout Grid.Row="1" Spacing="6">
+                        <Label Text="招式" FontFamily="NunitoBold" FontSize="9"
+                               TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"
+                               Margin="0,0,0,2"/>
+                        <Border x:Name="PhoneMoveRow0" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="10,9">
+                            <Grid ColumnDefinitions="10,*,Auto">
+                                <Ellipse x:Name="PhoneMoveDot0" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                <Label x:Name="PhoneMoveName0" Grid.Column="1" Margin="8,0,0,0"
+                                       FontFamily="NunitoBold" FontSize="13"
+                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center"/>
+                                <Label x:Name="PhoneMovePP0" Grid.Column="2"
+                                       FontFamily="Nunito" FontSize="11"
+                                       TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="PhoneMoveRow1" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="10,9">
+                            <Grid ColumnDefinitions="10,*,Auto">
+                                <Ellipse x:Name="PhoneMoveDot1" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                <Label x:Name="PhoneMoveName1" Grid.Column="1" Margin="8,0,0,0"
+                                       FontFamily="NunitoBold" FontSize="13"
+                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center"/>
+                                <Label x:Name="PhoneMovePP1" Grid.Column="2"
+                                       FontFamily="Nunito" FontSize="11"
+                                       TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="PhoneMoveRow2" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="10,9">
+                            <Grid ColumnDefinitions="10,*,Auto">
+                                <Ellipse x:Name="PhoneMoveDot2" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                <Label x:Name="PhoneMoveName2" Grid.Column="1" Margin="8,0,0,0"
+                                       FontFamily="NunitoBold" FontSize="13"
+                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center"/>
+                                <Label x:Name="PhoneMovePP2" Grid.Column="2"
+                                       FontFamily="Nunito" FontSize="11"
+                                       TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="PhoneMoveRow3" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                Padding="10,9">
+                            <Grid ColumnDefinitions="10,*,Auto">
+                                <Ellipse x:Name="PhoneMoveDot3" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                <Label x:Name="PhoneMoveName3" Grid.Column="1" Margin="8,0,0,0"
+                                       FontFamily="NunitoBold" FontSize="13"
+                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center"/>
+                                <Label x:Name="PhoneMovePP3" Grid.Column="2"
+                                       FontFamily="Nunito" FontSize="11"
+                                       TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Edit button -->
+                        <Border StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThIconBgBlue}"
+                                Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                                Padding="0,11" Margin="0,4,0,0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPhoneSheetEditTapped"/>
+                            </Border.GestureRecognizers>
+                            <Label Text="编辑宝可梦" FontFamily="NunitoBold" FontSize="14"
+                                   TextColor="{DynamicResource ThTextPrimary}"
+                                   HorizontalOptions="Center"/>
+                        </Border>
+                    </VerticalStackLayout>
+
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  FLOATING ACTION MENU (Start button)                  -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="ActionMenuOverlay"
+              Grid.Row="0" Grid.RowSpan="2" Grid.ColumnSpan="2"
+              IsVisible="False"
+              BackgroundColor="{DynamicResource ThActionMenuOverlay}">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnActionOverlayTapped" />
+            </Grid.GestureRecognizers>
+            <Border x:Name="ActionMenuPanel"
+                    HorizontalOptions="Center" VerticalOptions="Center"
+                    BackgroundColor="{DynamicResource ThActionMenuPanel}"
+                    Stroke="{DynamicResource ThActionMenuStroke}"
+                    StrokeShape="RoundRectangle 14" Padding="0"
+                    MinimumWidthRequest="220">
+                <VerticalStackLayout Spacing="0">
+
+                    <!-- Menu title -->
+                    <Label Text="保存 / 导出 / 道具"
+                           TextColor="{DynamicResource ThActionMenuTitle}" FontSize="11"
+                           HorizontalOptions="Center"
+                           Margin="0,10,0,8" />
+
+                    <!-- Save option -->
+                    <Border x:Name="MenuItem_Save"
+                            BackgroundColor="{DynamicResource ThSettingsRow}"
+                            Stroke="{DynamicResource ThDivider}"
+                            StrokeShape="RoundRectangle 8" Padding="16,12"
+                            Margin="8,0,8,6">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSaveClicked" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="12" HorizontalOptions="Center">
+                            <Label Text="{x:Static theme:Ph.FloppyDisk}" FontFamily="Phosphor"
+                                   FontSize="20" TextColor="{DynamicResource ThAccent}"
+                                   VerticalOptions="Center" />
+                            <Label x:Name="SaveMenuLabel" Text="保存到原文件" FontFamily="NunitoBold"
+                                   FontSize="14" TextColor="{DynamicResource ThTextPrimary}"
+                                   VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <!-- Export option -->
+                    <Border x:Name="MenuItem_Export"
+                            BackgroundColor="{DynamicResource ThSettingsRow}"
+                            Stroke="{DynamicResource ThDivider}"
+                            StrokeShape="RoundRectangle 8" Padding="16,12"
+                            Margin="8,0,8,6">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnExportClicked" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="12" HorizontalOptions="Center">
+                            <Label Text="{x:Static theme:Ph.Export}" FontFamily="Phosphor"
+                                   FontSize="20" TextColor="{DynamicResource ThAccent}"
+                                   VerticalOptions="Center" />
+                            <Label x:Name="ExportMenuLabel" Text="导出为新文件" FontFamily="NunitoBold"
+                                   FontSize="14" TextColor="{DynamicResource ThTextPrimary}"
+                                   VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <!-- Items option -->
+                    <Border x:Name="MenuItem_Items"
+                            BackgroundColor="{DynamicResource ThSettingsRow}"
+                            Stroke="{DynamicResource ThDivider}"
+                            StrokeShape="RoundRectangle 8" Padding="16,12"
+                            Margin="8,0,8,10">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnItemsMenuClicked" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="12" HorizontalOptions="Center">
+                            <Label Text="{x:Static theme:Ph.Package}" FontFamily="Phosphor"
+                                   FontSize="20" TextColor="{DynamicResource ThAccent}"
+                                   VerticalOptions="Center" />
+                            <Label x:Name="ItemsMenuLabel" Text="编辑道具" FontFamily="NunitoBold"
+                                   FontSize="14" TextColor="{DynamicResource ThTextPrimary}"
+                                   VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  ITEMS PANEL — full-page overlay (both screens)       -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="ItemsPanel" Grid.Row="0" Grid.RowSpan="2" Grid.ColumnSpan="2" IsVisible="False"
+              RowDefinitions="Auto,Auto,Auto,*"
+              BackgroundColor="{DynamicResource ThPageBg}">
+
+            <!-- Header row -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Padding="16,14,16,8">
+                <Border StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnItemsCloseTapped"/>
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static theme:Ph.ArrowLeft}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Border>
+                <Label Grid.Column="1" Text="{x:Static svc:UiText.Items}" FontFamily="QuicksandExtraBold" FontSize="20"
+                       TextColor="{DynamicResource ThTextPrimary}"
+                       VerticalOptions="Center" Margin="14,0,0,0"/>
+                <Label x:Name="ItemsSlotInfoLabel" Grid.Column="2"
+                       FontFamily="NunitoBold" FontSize="11"
+                       TextColor="{DynamicResource ThTextSecondary}"
+                       VerticalOptions="Center" IsVisible="False"/>
+            </Grid>
+
+            <!-- Pocket tab strip -->
+            <ScrollView Grid.Row="1" Orientation="Horizontal"
+                        HorizontalScrollBarVisibility="Never" Padding="12,4,12,8">
+                <HorizontalStackLayout x:Name="PocketTabBar" Spacing="6"/>
+            </ScrollView>
+
+            <!-- Search bar -->
+            <Border Grid.Row="2"
+                    StrokeShape="RoundRectangle 10"
+                    BackgroundColor="{DynamicResource ThCardBg}"
+                    Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                    Margin="12,0,12,8" Padding="10,0">
+                <Entry x:Name="ItemSearchEntry"
+                       Placeholder="{x:Static svc:UiText.SearchItems}"
+                       PlaceholderColor="{DynamicResource ThTextDim}"
+                       TextColor="{DynamicResource ThTextPrimary}"
+                       FontFamily="Nunito" FontSize="13"
+                       BackgroundColor="Transparent"
+                       TextChanged="OnItemSearchChanged"/>
+            </Border>
+
+            <!-- Item list -->
+            <CollectionView x:Name="ItemsList" Grid.Row="3" Margin="10,0,10,4">
+                <CollectionView.EmptyView>
+                    <Label Text="这个口袋是空的。"
+                           FontFamily="Nunito" FontSize="13"
+                           TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           Margin="0,40"/>
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnDefinitions="*,Auto,Auto,Auto"
+                              Padding="8,0" MinimumHeightRequest="50">
+                            <Grid.Triggers>
+                                <DataTrigger TargetType="Grid"
+                                             Binding="{Binding IsSelected}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="#1A3B8FFF"/>
+                                </DataTrigger>
+                                <DataTrigger TargetType="Grid"
+                                             Binding="{Binding IsOwned}" Value="False">
+                                    <Setter Property="Opacity" Value="0.4"/>
+                                </DataTrigger>
+                            </Grid.Triggers>
+                            <Label Grid.Column="0" Text="{Binding Name}"
+                                   FontFamily="NunitoBold" FontSize="13"
+                                   TextColor="{DynamicResource ThTextPrimary}"
+                                   VerticalOptions="Center"/>
+                            <Border Grid.Column="1" IsVisible="{Binding IsEditable}"
+                                    StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="{DynamicResource ThCardBg}"
+                                    Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                                    WidthRequest="34" HeightRequest="34" Margin="4,0">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding DecrementCommand}"/>
+                                </Border.GestureRecognizers>
+                                <Label Text="−" FontFamily="NunitoBold" FontSize="18"
+                                       TextColor="{DynamicResource ThTextPrimary}"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                            <Label Grid.Column="2" Text="{Binding CountText}"
+                                   FontFamily="NunitoBold" FontSize="13"
+                                   TextColor="{DynamicResource ThTextPrimary}"
+                                   MinimumWidthRequest="56"
+                                   HorizontalTextAlignment="Center"
+                                   VerticalOptions="Center"/>
+                            <Border Grid.Column="3" IsVisible="{Binding IsEditable}"
+                                    StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="{DynamicResource ThCardBg}"
+                                    Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                                    WidthRequest="34" HeightRequest="34" Margin="0,0,4,0">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding IncrementCommand}"/>
+                                </Border.GestureRecognizers>
+                                <Label Text="+" FontFamily="NunitoBold" FontSize="18"
+                                       TextColor="{DynamicResource ThTextPrimary}"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+
+    </Grid>
+</ContentPage>

@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:skia="clr-namespace:SkiaSharp.Views.Maui.Controls;assembly=SkiaSharp.Views.Maui.Controls"
+             xmlns:theme="clr-namespace:PKHeX.Mobile.Theme"
+             xmlns:svc="clr-namespace:PKHeX.Mobile.Services"
+             x:Class="PKHeX.Mobile.Pages.BankPage"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{DynamicResource ThPageBg}">
+
+    <!-- 外层 Grid：详情浮层是 RootGrid 的兄弟，避免底部被溢出裁掉 -->
+    <Grid>
+        <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,*,Auto"
+              BackgroundColor="{DynamicResource ThPageBg}">
+
+            <!-- ── Save header（与箱子页顶部完全同款：图标 + 名字 + 游戏名 + 箱子 ▸） ── -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,12,*,Auto"
+                  BackgroundColor="{DynamicResource ThCardBg}" Padding="16,10,10,10">
+                <Border StrokeShape="RoundRectangle 10"
+                        Stroke="#0FFFFFFF" StrokeThickness="1"
+                        WidthRequest="58" HeightRequest="58" VerticalOptions="Center">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#26394880" Offset="0" />
+                            <GradientStop Color="#1AA78BFA" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Image x:Name="BankGameIcon" Aspect="AspectFill"
+                           WidthRequest="58" HeightRequest="58"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+
+                <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="3">
+                    <Label x:Name="BankTrainerNameLabel"
+                           FontFamily="NunitoExtraBold" FontSize="22"
+                           TextColor="{DynamicResource ThTextPrimary}" MaxLines="1"
+                           LineBreakMode="TailTruncation" />
+                    <Label x:Name="BankSaveGameLabel"
+                           FontFamily="Nunito" FontSize="12"
+                           TextColor="{DynamicResource ThTextSecondary}" MaxLines="1"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+
+                <!-- 最右上角：跳回箱子页 -->
+                <Border Grid.Column="3" x:Name="ToBoxBtn" StrokeShape="RoundRectangle 8"
+                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        Padding="12,10" VerticalOptions="Center">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnToBoxTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static svc:UiText.BoxArrow}" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+
+                <!-- 旧的初训家 ID / 箱子数（控件保留，隐藏） -->
+                <Label x:Name="BankSaveMetaLabel" IsVisible="False" Text="" />
+            </Grid>
+
+            <!-- ── 银行箱子导航 ── -->
+            <Grid Grid.Row="1" ColumnDefinitions="52,*,52" Padding="4,4">
+                <Button Grid.Column="0" x:Name="PrevBankBtn"
+                        Text="{x:Static theme:Ph.CaretLeft}"
+                        FontFamily="Phosphor"
+                        Clicked="OnPrevBox"
+                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        TextColor="White"
+                        FontSize="18" Padding="0" />
+                <VerticalStackLayout Grid.Column="1" HorizontalOptions="Center" Spacing="1">
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBoxHeaderTapped"/>
+                    </VerticalStackLayout.GestureRecognizers>
+                    <Label x:Name="BankNameLabel"
+                           TextColor="{DynamicResource ThTextPrimary}" FontSize="16" FontAttributes="Bold"
+                           HorizontalOptions="Center" MaxLines="1" LineBreakMode="TailTruncation" />
+                    <Label x:Name="BoxIndexLabel"
+                           TextColor="{DynamicResource ThTextHint}" FontSize="10"
+                           HorizontalOptions="Center" />
+                </VerticalStackLayout>
+                <Button Grid.Column="2" x:Name="NextBankBtn"
+                        Text="{x:Static theme:Ph.CaretRight}"
+                        FontFamily="Phosphor"
+                        Clicked="OnNextBox"
+                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        TextColor="White"
+                        FontSize="18" Padding="0" />
+            </Grid>
+
+            <!-- ── Mode banner ── -->
+            <Border Grid.Row="2" x:Name="ModeBanner"
+                    BackgroundColor="#0D1A0D" Stroke="Transparent"
+                    Padding="10,6" IsVisible="False">
+                <Label x:Name="ModeLabel"
+                       TextColor="#44CC66" FontSize="13" FontAttributes="Bold"
+                       HorizontalOptions="Center" MaxLines="2" LineBreakMode="TailTruncation" />
+            </Border>
+
+            <!-- ── Bank grid ── -->
+            <skia:SKCanvasView Grid.Row="3" x:Name="BankCanvas"
+                               PaintSurface="OnBankPaintSurface">
+                <skia:SKCanvasView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnBankTapped" />
+                </skia:SKCanvasView.GestureRecognizers>
+            </skia:SKCanvasView>
+
+            <!-- ── Info bar（两行，竖屏不压按键） ── -->
+            <VerticalStackLayout Grid.Row="4" Spacing="4"
+                                 BackgroundColor="{DynamicResource ThCardBg}" Padding="12,6,12,8">
+                <Label x:Name="HoverLabel"
+                       TextColor="{DynamicResource ThTextSecondary}" FontSize="12"
+                       MaxLines="1" LineBreakMode="TailTruncation" />
+                <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                    <HorizontalStackLayout x:Name="HintBar" Spacing="10" />
+                </ScrollView>
+            </VerticalStackLayout>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  详情浮层：与箱子页 PhoneDetailSheet 同款布局         -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <Grid x:Name="DetailOverlay" IsVisible="False" BackgroundColor="Transparent"
+              InputTransparent="True">
+            <BoxView x:Name="DetailScrim" BackgroundColor="#000000" Opacity="0"
+                     InputTransparent="True">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnDetailScrimTapped" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <Border x:Name="DetailPanel"
+                    VerticalOptions="End"
+                    TranslationY="600"
+                    StrokeShape="RoundRectangle 20,20,0,0"
+                    BackgroundColor="{DynamicResource ThActionMenuPanel}"
+                    Stroke="{DynamicResource ThActionMenuStroke}"
+                    StrokeThickness="1"
+                    Padding="16,14,16,24">
+                <Grid RowDefinitions="Auto,Auto" RowSpacing="14">
+
+                    <!-- Header: sprite + badges/name/level + 右侧竖排三键 -->
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                        <skia:SKCanvasView x:Name="DetailSpriteCanvas"
+                                           WidthRequest="90" HeightRequest="90"
+                                           PaintSurface="OnDetailSpritePaint"/>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="5">
+                            <HorizontalStackLayout x:Name="DetailTypeBadges" Spacing="5"/>
+                            <Label x:Name="DetailSpecies"
+                                   FontFamily="NunitoExtraBold" FontSize="20"
+                                   TextColor="{DynamicResource ThTextPrimary}"
+                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                            <Label x:Name="DetailLevelNature"
+                                   FontFamily="Nunito" FontSize="12"
+                                   TextColor="{DynamicResource ThTextSecondary}"
+                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                        </VerticalStackLayout>
+
+                        <!-- 右上角竖排小按钮：R3 叫声 / 关闭 / 取出银行 -->
+                        <VerticalStackLayout Grid.Column="2" Spacing="4"
+                                             VerticalOptions="Start" HorizontalOptions="End">
+                            <Border x:Name="DetailCryBtn" StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="{DynamicResource ThHintBg}"
+                                    Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                    Padding="6,3">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnDetailCryTapped" />
+                                </Border.GestureRecognizers>
+                                <Label Text="R 叫声" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="#60C0FF"/>
+                            </Border>
+                            <Border x:Name="DetailGrabBtn" StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="{DynamicResource ThHintBg}"
+                                    Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                    Padding="6,3">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnDetailGrabTapped" />
+                                </Border.GestureRecognizers>
+                                <Label Text="Y 抓取" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="#6BABFF"/>
+                            </Border>
+                            <Border x:Name="DetailWithdrawBtn" StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="#1E2A12"
+                                    Stroke="#5FA34A" StrokeThickness="1"
+                                    Padding="6,3">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnDetailWithdrawTapped" />
+                                </Border.GestureRecognizers>
+                                <Label Text="取出银行" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="#9BE07A"/>
+                            </Border>
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <!-- Moves -->
+                    <VerticalStackLayout Grid.Row="1" Spacing="6">
+                        <Label Text="招式" FontFamily="NunitoBold" FontSize="9"
+                               TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"
+                               Margin="0,0,0,2"/>
+                        <Border x:Name="DetailMoveRow0" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}" Padding="10,7">
+                            <Grid ColumnDefinitions="12,*,Auto">
+                                <Ellipse x:Name="DetailMoveDot0" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="9" HeightRequest="9" VerticalOptions="Center"/>
+                                <Label x:Name="DetailMoveName0" Grid.Column="1" Margin="8,0,0,0"
+                                       FontFamily="NunitoBold" FontSize="12"
+                                       TextColor="{DynamicResource ThTextPrimary}"
+                                       MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center"/>
+                                <Label x:Name="DetailMovePP0" Grid.Column="2" FontFamily="Nunito" FontSize="10"
+                                       TextColor="{DynamicResource ThTextHint}" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="DetailMoveRow1" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}" Padding="10,7">
+                            <Grid ColumnDefinitions="12,*,Auto">
+                                <Ellipse x:Name="DetailMoveDot1" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="9" HeightRequest="9" VerticalOptions="Center"/>
+                                <Label x:Name="DetailMoveName1" Grid.Column="1" Margin="8,0,0,0"
+                                       FontFamily="NunitoBold" FontSize="12"
+                                       TextColor="{DynamicResource ThTextPrimary}"
+                                       MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center"/>
+                                <Label x:Name="DetailMovePP1" Grid.Column="2" FontFamily="Nunito" FontSize="10"
+                                       TextColor="{DynamicResource ThTextHint}" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="DetailMoveRow2" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}" Padding="10,7">
+                            <Grid ColumnDefinitions="12,*,Auto">
+                                <Ellipse x:Name="DetailMoveDot2" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="9" HeightRequest="9" VerticalOptions="Center"/>
+                                <Label x:Name="DetailMoveName2" Grid.Column="1" Margin="8,0,0,0"
+                                       FontFamily="NunitoBold" FontSize="12"
+                                       TextColor="{DynamicResource ThTextPrimary}"
+                                       MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center"/>
+                                <Label x:Name="DetailMovePP2" Grid.Column="2" FontFamily="Nunito" FontSize="10"
+                                       TextColor="{DynamicResource ThTextHint}" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="DetailMoveRow3" StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{DynamicResource ThMoveRowBg}" Padding="10,7">
+                            <Grid ColumnDefinitions="12,*,Auto">
+                                <Ellipse x:Name="DetailMoveDot3" Grid.Column="0" Fill="#A8A878"
+                                         WidthRequest="9" HeightRequest="9" VerticalOptions="Center"/>
+                                <Label x:Name="DetailMoveName3" Grid.Column="1" Margin="8,0,0,0"
+                                       FontFamily="NunitoBold" FontSize="12"
+                                       TextColor="{DynamicResource ThTextPrimary}"
+                                       MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center"/>
+                                <Label x:Name="DetailMovePP3" Grid.Column="2" FontFamily="Nunito" FontSize="10"
+                                       TextColor="{DynamicResource ThTextHint}" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</ContentPage>
