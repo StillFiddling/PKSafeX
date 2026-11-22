@@ -240,3 +240,10 @@ pingme.txt
 #################
 
 *.userprefs
+
+# 签名与本地产物
+*.keystore
+*.jks
+*.p12
+keystore.properties
+*.apk
