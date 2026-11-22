@@ -203,7 +203,7 @@ public partial class BankPage : ContentPage
             };
             canvas.DrawRoundRect(rect, radius, radius, borderPaint);
 
-            // Sprite �?ghost opacity at source slot
+        // Sprite ghost opacity at source slot
             if (filled)
             {
                 var sprite = _sprites.GetSprite(pk!);
@@ -389,7 +389,7 @@ public partial class BankPage : ContentPage
             return;
         }
 
-        // 正常模式：选中并弹出详情浮层（与箱子页同款布局�?
+            // 正常模式：选中并弹出详情浮层（与箱子页同款布局）
         if (_cursorSlot < _currentSlots.Length && _currentSlots[_cursorSlot]?.Species > 0)
         {
             SelectSlot(_cursorSlot);
@@ -461,10 +461,10 @@ public partial class BankPage : ContentPage
         // Clear or swap the original source slot, which may be in a different box.
         var destPk = _currentSlots[_cursorSlot];
         if (destPk?.Species > 0)
-            _bank.Deposit(_moveSourceBox, _moveSourceSlot, destPk); // swap dest �?source
+            _bank.Deposit(_moveSourceBox, _moveSourceSlot, destPk); // swap dest -> source
         else
             _bank.ClearSlot(_moveSourceBox, _moveSourceSlot);       // vacate source
-        _bank.Deposit(_boxIndex, _cursorSlot, _movePk!);            // place grabbed �?dest
+            _bank.Deposit(_boxIndex, _cursorSlot, _movePk!);            // place grabbed -> dest
         CancelMoveMode();
         LoadBox(_boxIndex);
     }
@@ -492,7 +492,7 @@ public partial class BankPage : ContentPage
     }
 
     // ──────────────────────────────────────────────
-    //  Bank �?Game swap
+        // Bank -> Game swap
     // ──────────────────────────────────────────────
 
     private async Task SwapToGame(int exitDir = 0)
@@ -604,7 +604,7 @@ public partial class BankPage : ContentPage
                     await PromptRemoveBox();
                     break;
 
-                // "close" �?do nothing, menu already dismissed
+        // "close" -> do nothing, menu already dismissed
             }
         });
     }
