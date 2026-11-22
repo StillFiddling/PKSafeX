@@ -141,18 +141,46 @@ public class MainActivity : MauiAppCompatActivity
         private readonly MainActivity _activity;
         public QuitConfirmBackCallback(MainActivity activity) : base(true) => _activity = activity;
 
+        private DateTime _lastBack = DateTime.MinValue;
+
+
         public override void HandleOnBackPressed()
         {
-            var page = Microsoft.Maui.Controls.Shell.Current?.CurrentPage;
+            // 防抖：一次按压可能被多处同时处理，600ms 内重复的返回直接忽略
+            var now = DateTime.UtcNow;
+            var gap = (now - _lastBack).TotalMilliseconds;
+            if (gap < 600) return;
+            _lastBack = now;
+
+            var shell = Microsoft.Maui.Controls.Shell.Current;
+            var page = shell?.CurrentPage;
+
+            // 首页：先提示、再按一次退出
             if (page is PKHeX.Mobile.MainPage main)
             {
                 main.GoBackOrQuit();
                 return;
             }
 
-            Enabled = false;
-            try { _activity.OnBackPressedDispatcher?.OnBackPressed(); }
-            finally { Enabled = true; }
+            // 其他页面：等同于返回上一页（与页面内 B 键一致），栈底时回首页
+            Microsoft.Maui.Controls.Application.Current?.Dispatcher.Dispatch(async () =>
+            {
+                try
+                {
+                    var sh = Microsoft.Maui.Controls.Shell.Current;
+                    if (sh is null) return;
+                    if (sh.Navigation.NavigationStack.Count > 1)
+                    {
+                        await sh.GoToAsync("..", false);
+                        return;
+                    }
+                    await sh.GoToAsync("//MainPage");
+                }
+                catch
+                {
+                    // 导航失败时不退出应用，留给用户手动操作
+                }
+            });
         }
     }
 
