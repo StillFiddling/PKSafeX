@@ -4,6 +4,7 @@ using PKHeX.Mobile.Services;
 using SkiaSharp;
 using SkiaSharp.Views.Maui;
 using Microsoft.Maui.Graphics;
+using static PKHeX.Mobile.Services.ThemeService;
 
 namespace PKHeX.Mobile.Pages;
 
@@ -109,6 +110,8 @@ public partial class PkmEditorPage : ContentPage
 
 #if ANDROID
         GamepadRouter.KeyReceived += OnGamepadKey;
+        SystemBackGate.Detach(_backGate);
+        _backGate = SystemBackGate.Attach(HandleSystemBack);
 #endif
 
         _secondary.Show();
@@ -120,6 +123,9 @@ public partial class PkmEditorPage : ContentPage
             : _session.ActiveSave.GetBoxSlotAtIndex(_boxIndex, _slotIndex);
         await _sprites.PreloadBoxAsync([_pk]);
         PopulateControls();
+        _dirty = false;
+        HookDirtySignals();
+        RefreshSaveButton();
         SpriteCanvas.InvalidateSurface();
         UpdateRowHighlight();
         _legalityResult = null;
@@ -130,6 +136,8 @@ public partial class PkmEditorPage : ContentPage
     {
         base.OnDisappearing();
 #if ANDROID
+        SystemBackGate.Detach(_backGate);
+        _backGate = null;
         GamepadRouter.KeyReceived -= OnGamepadKey;
 #endif
         StopDpadRepeat();
@@ -250,7 +258,7 @@ public partial class PkmEditorPage : ContentPage
                 SwitchTab((_currentTab + 1) % 6); break;
 
             case Android.Views.Keycode.ButtonB:
-                _ = Shell.Current.GoToAsync(".."); break;
+                _ = ConfirmLeaveAsync(); break;
 
             case Android.Views.Keycode.ButtonStart:
                 OnSaveClicked(this, EventArgs.Empty); break;
@@ -663,51 +671,180 @@ public partial class PkmEditorPage : ContentPage
         }
     }
 
-    private async void OnSaveClicked(object sender, EventArgs e)
+    /// <summary>底部「保存改动」按钮：写回后留在本页，按钮回到灰态。</summary>
+    private async void OnSaveTapped(object? sender, TappedEventArgs e)
+        => await SaveAsync(announce: true);
+
+    /// <summary>工具栏 / 手柄的「保存」：写回后返回箱子页（保持原有行为）。</summary>
+    private async void OnSaveClicked(object? sender, EventArgs e)
     {
-        if (_pk is null || _session.ActiveSave is null) return;
-        ApplyChanges();
-
-        // Write back to original file if a URI is available
-        if (!string.IsNullOrEmpty(_session.ActiveSaveFileUri))
-        {
-            try
-            {
-                var isParty  = _isParty;
-                var boxIndex = _boxIndex;
-                var slot     = _slotIndex;
-                var edited   = _pk;
-
-                // 安全写回：若游戏已在软件之后保存过，只把「修改这只」合并到最新存档，
-                // 不会用软件里的旧快照覆盖玩家自己的进度。
-                var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
-                {
-                    if (isParty)
-                        s.SetPartySlotAtIndex(edited, slot);
-                    else
-                        s.SetBoxSlotAtIndex(edited, boxIndex, slot);
-                });
-
-                if (result is SaveWriteResult.StaleUnreadable)
-                    await DisplayAlertAsync("存档已被更新",
-                        "磁盘上的存档比软件里加载的更新且无法解析，本次修改未写入。请回首页重新加载存档后再编辑。",
-                        "OK");
-                else if (result is SaveWriteResult.MergedIntoLatest)
-                    await DisplayAlertAsync("已保存（含并最新进度）",
-                        "检测到游戏里已保存过更新的存档，本次修改已合并进最新存档，游戏进度未被覆盖。",
-                        "OK");
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlertAsync("写回失败", ex.Message, "OK");
-            }
-        }
-
+        await SaveAsync(announce: true);
         await Shell.Current.GoToAsync("..");
     }
 
+    // ── 未保存改动追踪 + 保存按钮状态 ──────────────────────────────────────
+
+    private bool _dirty;
+    private bool _dirtyHooked;
+
+#if ANDROID
+    private SystemBackGate? _backGate;
+
+    /// <summary>手势/预测性返回走 dispatcher，这里转给「是否保存」流程。</summary>
+    private bool HandleSystemBack()
+    {
+        if (!_dirty) return false;
+        _ = ConfirmLeaveAsync();
+        return true;
+    }
+#endif
+
+    private void MarkDirty()
+    {
+        if (!_dirtyHooked || _dirty) return;
+        _dirty = true;
+        RefreshSaveButton();
+    }
+
+    /// <summary>有改动时按钮点亮成蓝色「保存改动」，没有改动显示灰态「已保存」。</summary>
+    private void RefreshSaveButton()
+    {
+        if (SaveButton is null || SaveButtonLabel is null) return;
+        bool light = ThemeService.Current == PkTheme.Light;
+        SaveButtonLabel.Text = _dirty ? "保存改动" : "已保存";
+        SaveButtonLabel.TextColor = _dirty
+            ? Color.FromArgb("#FFFFFF")
+            : Color.FromArgb(light ? "#555E78" : "#778BAA");
+        SaveButton.BackgroundColor = _dirty
+            ? Color.FromArgb("#3B8BFF")
+            : Color.FromArgb(light ? "#F4F6FB" : "#0C1120");
+        SaveButton.Stroke = Color.FromArgb(_dirty ? "#3B8BFF" : (light ? "#E0E4EC" : "#1AFFFFFF"));
+#if ANDROID
+        if (_backGate != null) _backGate.Enabled = _dirty;
+#endif
+    }
+
+    /// <summary>给所有输入控件挂「一改就置 dirty」的监听；PopulateControls 期间先关掉。</summary>
+    private void HookDirtySignals()
+    {
+        _dirtyHooked = false;
+        HookDirtySignalsRecursive(this);
+        _dirtyHooked = true;
+    }
+
+    private void HookDirtySignalsRecursive(IVisualTreeElement el)
+    {
+        if (el is Entry entry)         entry.TextChanged           += (_, _) => MarkDirty();
+        else if (el is Editor editor)  editor.TextChanged          += (_, _) => MarkDirty();
+        else if (el is Picker picker)  picker.SelectedIndexChanged += (_, _) => MarkDirty();
+        else if (el is Switch sw)      sw.Toggled                  += (_, _) => MarkDirty();
+        else if (el is CheckBox box)   box.CheckedChanged          += (_, _) => MarkDirty();
+        else if (el is Button btn)     btn.Clicked                 += (_, _) => MarkDirty();
+
+        foreach (var child in el.GetVisualChildren())
+            HookDirtySignalsRecursive(child);
+    }
+
+    /// <summary>写回这只宝可梦（带冲突保护：游戏里存过新档时只合并这一格）。</summary>
+    private async Task<bool> SaveAsync(bool announce)
+    {
+        if (_pk is null || _session.ActiveSave is null) return false;
+        ApplyChanges();
+
+        if (string.IsNullOrEmpty(_session.ActiveSaveFileUri))
+        {
+            await DisplayAlertAsync("保存失败", "找不到原文件位置，请回到首页重新加载存档后再编辑。", "OK");
+            return false;
+        }
+
+        try
+        {
+            var isParty  = _isParty;
+            var boxIndex = _boxIndex;
+            var slot     = _slotIndex;
+            var edited   = _pk;
+
+            // 安全写回：若游戏已在软件之后保存过，只把「修改这只」合并到最新存档，
+            // 不会用软件里的旧快照覆盖玩家自己的进度。
+            var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
+            {
+                if (isParty)
+                    s.SetPartySlotAtIndex(edited, slot);
+                else
+                    s.SetBoxSlotAtIndex(edited, boxIndex, slot);
+            });
+
+            if (result is SaveWriteResult.NoUri)
+            {
+                await DisplayAlertAsync("保存失败", "找不到原文件位置，请改用「导出存档」。", "OK");
+                return false;
+            }
+
+            if (result is SaveWriteResult.StaleUnreadable)
+            {
+                await DisplayAlertAsync("存档已被更新",
+                    "磁盘上的存档比软件里加载的更新且无法解析，本次修改未写入。请回首页重新加载存档后再编辑。",
+                    "OK");
+                return false;
+            }
+
+            if (result is SaveWriteResult.MergedIntoLatest)
+            {
+                await DisplayAlertAsync("已保存（含并最新进度）",
+                    "检测到游戏里已保存过更新的存档，本次修改已合并进最新存档，游戏进度未被覆盖。",
+                    "OK");
+            }
+            else if (announce)
+            {
+                Toast("已写回存档文件");
+            }
+
+            _dirty = false;
+            RefreshSaveButton();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("写回失败", ex.Message, "OK");
+            return false;
+        }
+    }
+
+    /// <summary>返回（含系统返回/滑动返回）：有未保存改动先问是否保存。</summary>
+    private async Task<bool> ConfirmLeaveAsync()
+    {
+        if (_dirty)
+        {
+            bool save = await DisplayAlertAsync("改动尚未保存",
+                "这只宝可梦的修改还没写入存档文件。是否保存？", "保存", "不保存");
+            if (save && !await SaveAsync(announce: false))
+                return false;   // 保存失败就留在本页，避免改动悄悄丢掉
+            _dirty = false;
+        }
+        await Shell.Current.GoToAsync("..");
+        return true;
+    }
+
+    protected override bool OnBackButtonPressed()
+    {
+        if (_dirty)
+        {
+            _ = ConfirmLeaveAsync();
+            return true;
+        }
+        return base.OnBackButtonPressed();
+    }
+
+    private void Toast(string text)
+    {
+#if ANDROID
+        Android.Widget.Toast.MakeText(Android.App.Application.Context, text,
+            Android.Widget.ToastLength.Short)?.Show();
+#endif
+    }
+
     private async void OnBackClicked(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync("..");
+        => await ConfirmLeaveAsync();
 
     private void ApplyChanges()
     {

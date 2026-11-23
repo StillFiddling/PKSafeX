@@ -172,6 +172,11 @@ public partial class GamePage : ContentPage
 #endif
         ItemRow.Changed -= OnItemChanged;
         ItemRow.Changed += OnItemChanged;
+#if ANDROID
+        SystemBackGate.Detach(_backGate);
+        _backGate = SystemBackGate.Attach(HandleSystemBack);
+        if (_backGate != null) _backGate.Enabled = _itemsTabActive;
+#endif
         var sav = _session.ActiveSave;
         if (sav is null) return;
 
@@ -270,6 +275,29 @@ public partial class GamePage : ContentPage
         BindBoxHintTaps();
     }
 
+    /// <summary>系统返回 / 滑动返回：道具页有未保存改动时先问是否保存，别直接退出去。</summary>
+    protected override bool OnBackButtonPressed()
+    {
+        if (_itemsTabActive)
+        {
+            _ = SwitchToBoxesTabAsync();
+            return true;
+        }
+        return base.OnBackButtonPressed();
+    }
+
+#if ANDROID
+    private SystemBackGate? _backGate;
+
+    /// <summary>手势/预测性返回走 dispatcher，这里统一转给道具页的「是否保存」流程。</summary>
+    private bool HandleSystemBack()
+    {
+        if (!_itemsTabActive) return false;
+        _ = SwitchToBoxesTabAsync();
+        return true;
+    }
+#endif
+
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
@@ -285,6 +313,8 @@ public partial class GamePage : ContentPage
             _phoneSheetPk = null;
         }
 #if ANDROID
+        SystemBackGate.Detach(_backGate);
+        _backGate = null;
         GamepadRouter.KeyReceived        -= OnGamepadKey;
         GamepadRouter.BoxScrollRequested -= OnBoxScroll;
         _cryPlayer?.Stop();
