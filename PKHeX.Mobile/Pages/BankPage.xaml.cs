@@ -447,14 +447,13 @@ public partial class BankPage : ContentPage
 
         if (!ok)
         {
-            // 回退箱子：清掉待存入状态，原格不动
+            // 取消存入：清掉待存入状态，原格不动，停留在银行页
             _session.PendingMove       = null;
             _session.PendingFromBank   = false;
             _session.PendingSourceBox  = -1;
             _session.PendingSourceSlot = -1;
             UpdateModeBanner();
             LoadBox(_boxIndex);
-            await SwapToGame();
             return;
         }
 
@@ -500,7 +499,6 @@ public partial class BankPage : ContentPage
 
             UpdateModeBanner();
             LoadBox(_boxIndex);
-            await SwapToGame();
 
             if (merged)
                 await DisplayAlertAsync("已存入（含并最新进度）",

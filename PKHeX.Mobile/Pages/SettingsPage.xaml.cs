@@ -1,8 +1,6 @@
 using PKHeX.Core;
 using PKHeX.Drawing.Mobile.Sprites;
 using PKHeX.Mobile.Services;
-using SkiaSharp;
-using SkiaSharp.Views.Maui;
 using static PKHeX.Mobile.Services.ThemeService;
 
 #if ANDROID
@@ -39,13 +37,6 @@ public partial class SettingsPage : ContentPage
     private readonly ISaveFilePicker _filePicker = new NullSaveFilePicker();
 #endif
 
-    // Download logs
-    private readonly System.Text.StringBuilder _spriteLog = new();
-    private readonly System.Text.StringBuilder _animLog   = new();
-    private int _spriteLogLines;
-    private int _animLogLines;
-    private const int MaxLogLines = 200;
-
     /// <summary>当前唯一开放的语言：简体中文。其它语言后续再放开。</summary>
     public const string SupportedLanguage = "zh-Hans";
 
@@ -70,10 +61,6 @@ public partial class SettingsPage : ContentPage
         GamepadRouter.KeyReceived -= OnGamepadKey;
         GamepadRouter.KeyReceived += OnGamepadKey;
 #endif
-        HomeSpriteCacheService.BulkProgressChanged += OnBulkProgress;
-        HomeSpriteCacheService.SlugCompleted       += OnSpriteSlugCompleted;
-        SpriteCacheService.BulkProgressChanged     += OnAnimProgress;
-        SpriteCacheService.SlugCompleted           += OnAnimSlugCompleted;
         _loading = true;
 
         var lang = Preferences.Default.Get(KeyLanguage, SupportedLanguage);
@@ -92,8 +79,7 @@ public partial class SettingsPage : ContentPage
 
         BuildRows();
         UpdateHighlight();
-        UpdateSpriteStatus();
-        UpdateAnimSpriteStatus();
+        UpdateSpriteSummaries();
     }
 
     protected override void OnDisappearing()
@@ -102,16 +88,38 @@ public partial class SettingsPage : ContentPage
 #if ANDROID
         GamepadRouter.KeyReceived -= OnGamepadKey;
 #endif
-        HomeSpriteCacheService.BulkProgressChanged -= OnBulkProgress;
-        HomeSpriteCacheService.SlugCompleted       -= OnSpriteSlugCompleted;
-        SpriteCacheService.BulkProgressChanged     -= OnAnimProgress;
-        SpriteCacheService.SlugCompleted           -= OnAnimSlugCompleted;
     }
 
     private void BuildRows()
     {
-        _rows = [Row_Language, Row_Shiny, Row_Radar, Row_Folders, Row_AddSave, Row_AutoScan,
+        _rows = [Row_Language, Row_Shiny, Row_Radar, Row_Folders, Row_AutoScan,
                  Row_Legality, Row_Theme, Row_HeroBg, Row_Animated3D, Row_Sprites, Row_AnimSprites];
+    }
+
+    /// <summary>两行入口各显示一行缓存概况，具体操作在二级页完成。</summary>
+    private void UpdateSpriteSummaries()
+    {
+        int homeCount = HomeSpriteCacheService.CountCached();
+        int animCount = SpriteCacheService.CountCached();
+
+        HomeSpriteSummaryLabel.Text = homeCount > 0
+            ? $"已缓存 {homeCount} 张 · 下载或导入"
+            : "下载或导入 HOME 立绘";
+        AnimSpriteSummaryLabel.Text = animCount > 0
+            ? $"已缓存 {animCount} 张 · 下载或导入"
+            : "下载或导入动态立绘";
+    }
+
+    private async void OnHomeSpritesTapped(object? sender, EventArgs e)
+        => await OpenSpriteSourcePage("home");
+
+    private async void OnAnimSpritesTapped(object? sender, EventArgs e)
+        => await OpenSpriteSourcePage("anim");
+
+    private async Task OpenSpriteSourcePage(string kind)
+    {
+        try { await Shell.Current.GoToAsync($"{nameof(SpriteSourcePage)}?kind={kind}"); }
+        catch (Exception ex) { CrashLog.Write("SettingsPage.OnSpritesTapped", ex); }
     }
 
     private void UpdateHighlight()
@@ -186,11 +194,11 @@ public partial class SettingsPage : ContentPage
 
             case 1:  SetToggle(ShinySwitch,         delta); break;
             case 2:  SetToggle(RadarAdaptiveSwitch, delta); break;
-            case 5:  SetToggle(AutoScanSwitch,      delta); break;
-            case 6:  SetToggle(LegalitySwitch,      delta); break;
-            case 7:  SetToggle(ThemeSwitch,         delta); break;
-            case 8:  SetToggle(MoireSwitch,         delta); break;
-            case 9:  SetToggle(Animated3DSwitch,    delta); break;
+            case 4:  SetToggle(AutoScanSwitch,      delta); break;
+            case 5:  SetToggle(LegalitySwitch,      delta); break;
+            case 6:  SetToggle(ThemeSwitch,         delta); break;
+            case 7:  SetToggle(MoireSwitch,         delta); break;
+            case 8:  SetToggle(Animated3DSwitch,    delta); break;
         }
 
         static void SetToggle(Switch sw, int delta)
@@ -220,28 +228,25 @@ public partial class SettingsPage : ContentPage
                 _ = Shell.Current.GoToAsync(nameof(FolderManagerPage));
                 break;
             case 4:
-                OnAddSaveClicked(this, EventArgs.Empty);
-                break;
-            case 5:
                 AutoScanSwitch.IsToggled = !AutoScanSwitch.IsToggled;
                 break;
-            case 6:
+            case 5:
                 LegalitySwitch.IsToggled = !LegalitySwitch.IsToggled;
                 break;
-            case 7:
+            case 6:
                 ThemeSwitch.IsToggled = !ThemeSwitch.IsToggled;
                 break;
-            case 8:
+            case 7:
                 MoireSwitch.IsToggled = !MoireSwitch.IsToggled;
                 break;
-            case 9:
+            case 8:
                 Animated3DSwitch.IsToggled = !Animated3DSwitch.IsToggled;
                 break;
-            case 10:
-                StartBulkDownload();
+            case 9:
+                _ = OpenSpriteSourcePage("home");
                 break;
-            case 11:
-                StartAnimBulkDownload();
+            case 10:
+                _ = OpenSpriteSourcePage("anim");
                 break;
         }
     }
@@ -337,288 +342,7 @@ public partial class SettingsPage : ContentPage
         await DisplayAlertAsync("主题已更改", "重启应用后完全生效。", "OK");
     }
 
-    // ── Sprite pack import (ZIP) ──────────────────────────────────────────────
-
-    private bool _importing;
-
-    private static readonly FilePickerFileType ZipFileType = new(
-        new Dictionary<DevicePlatform, IEnumerable<string>>
-        {
-            [DevicePlatform.Android]      = ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
-            [DevicePlatform.WinUI]        = [".zip"],
-            [DevicePlatform.MacCatalyst]  = ["public.zip-archive"],
-            [DevicePlatform.iOS]          = ["public.zip-archive"],
-        });
-
-    private async void OnImportHomeSpritesTapped(object? sender, EventArgs e)
-        => await ImportSpritePackAsync(ImportHomeStatusLabel);
-
-    private async void OnImportAnimSpritesTapped(object? sender, EventArgs e)
-        => await ImportSpritePackAsync(ImportAnimStatusLabel);
-
-    private async Task ImportSpritePackAsync(Label status)
-    {
-        if (_importing)
-        {
-            await DisplayAlertAsync("正在导入", "上一个导入还没结束，请稍候。", "OK");
-            return;
-        }
-
-        FileResult? picked;
-        try
-        {
-            picked = await FilePicker.Default.PickAsync(new PickOptions
-            {
-                PickerTitle = "选择精灵包 ZIP",
-                FileTypes   = ZipFileType,
-            });
-        }
-        catch (Exception ex)
-        {
-            status.Text = "打开文件选择器失败：" + ex.Message;
-            return;
-        }
-
-        if (picked is null) return;
-
-        _importing = true;
-        try
-        {
-            status.Text = "正在导入…（请保持应用在前台）";
-
-            await using var stream = await picked.OpenReadAsync();
-            var progress = new Progress<(int Done, int Total)>(p =>
-                status.Text = $"正在导入… {p.Done} / {p.Total}");
-
-            var result = await SpritePackInstaller.ImportAsync(stream, progress);
-
-            double homeMb = HomeSpriteCacheService.CacheSizeMb();
-            double animMb = SpriteCacheService.CacheSizeMb();
-            status.Text = $"{result.Summary()}｜HOME {homeMb:F1} MB，动态 {animMb:F1} MB";
-
-            if (result.Errors.Count > 0)
-            {
-                string detail = string.Join("\n", result.Errors.Take(8));
-                await DisplayAlertAsync("导入完成（有部分失败）",
-                    $"{result.Summary()}\n\n{detail}", "OK");
-            }
-        }
-        catch (Exception ex)
-        {
-            status.Text = "导入失败：" + ex.Message;
-        }
-        finally
-        {
-            _importing = false;
-        }
-    }
-
-    // ── HOME sprite download ──────────────────────────────────────────────────
-
-    private void OnSpriteDownloadTapped(object? sender, EventArgs e) => StartBulkDownload();
-
-    private void StartBulkDownload()
-    {
-        if (HomeSpriteCacheService.IsBulkDownloading)
-        {
-            HomeSpriteCacheService.StopBulk();
-            return;
-        }
-        _spriteLog.Clear();
-        _spriteLogLines  = 0;
-        SpriteLogLabel.Text = "";
-        SpriteLogPanel.IsVisible = false;
-        _ = HomeSpriteCacheService.BulkDownloadAsync();
-        UpdateSpriteStatus();
-    }
-
-    private void OnBulkProgress(int done, int total)
-    {
-        SpriteRingCanvas.InvalidateSurface();
-        UpdateSpriteStatus();
-    }
-
-    private void OnSpriteSlugCompleted(string slug, bool success)
-    {
-        AppendLog(SpriteLogPanel, SpriteLogLabel, SpriteLogScroll,
-                  _spriteLog, ref _spriteLogLines, slug, success);
-    }
-
-    private void UpdateSpriteStatus()
-    {
-        var (done, total, failed) = HomeSpriteCacheService.BulkProgress;
-        bool running = HomeSpriteCacheService.IsBulkDownloading;
-
-        if (running)
-        {
-            SpriteStatusLabel.Text = $"正在下载…  {done} / {total}（再次点按可停止）";
-            SpriteRingLabel.Text   = $"{done}";
-        }
-        else if (total > 0)
-        {
-            string failNote = failed > 0 ? $"  ·  失败 {failed} 个" : "";
-            SpriteStatusLabel.Text = $"已缓存 {done} 张{failNote}";
-            SpriteRingLabel.Text   = "✓";
-        }
-        else
-        {
-            SpriteStatusLabel.Text = "约 120 MB · 缓存全部宝可梦的 HOME 立绘";
-            SpriteRingLabel.Text   = "";
-        }
-    }
-
-    private void OnSpriteRingPaint(object sender, SKPaintSurfaceEventArgs e)
-        => PaintProgressRing(e, HomeSpriteCacheService.BulkProgress, HomeSpriteCacheService.IsBulkDownloading);
-
-    // ── Animated sprite download ──────────────────────────────────────────────
-
-    private void OnAnimSpriteDownloadTapped(object? sender, EventArgs e) => StartAnimBulkDownload();
-
-    private void StartAnimBulkDownload()
-    {
-        if (SpriteCacheService.IsBulkDownloading)
-        {
-            SpriteCacheService.StopBulk();
-            return;
-        }
-        _animLog.Clear();
-        _animLogLines  = 0;
-        AnimLogLabel.Text = "";
-        AnimLogPanel.IsVisible = false;
-        _ = SpriteCacheService.BulkDownloadAllAsync();
-        UpdateAnimSpriteStatus();
-    }
-
-    private void OnAnimProgress(int done, int total)
-    {
-        AnimRingCanvas.InvalidateSurface();
-        UpdateAnimSpriteStatus();
-    }
-
-    private void OnAnimSlugCompleted(string slug, bool success)
-    {
-        AppendLog(AnimLogPanel, AnimLogLabel, AnimLogScroll,
-                  _animLog, ref _animLogLines, slug, success);
-    }
-
-    private void UpdateAnimSpriteStatus()
-    {
-        var (done, total, failed) = SpriteCacheService.BulkProgress;
-        bool running = SpriteCacheService.IsBulkDownloading;
-
-        if (running)
-        {
-            AnimSpriteStatusLabel.Text = $"正在下载…  {done} / {total}（再次点按可停止）";
-            AnimRingLabel.Text         = $"{done}";
-        }
-        else if (total > 0)
-        {
-            string failNote = failed > 0 ? $"  ·  失败 {failed} 个" : "";
-            AnimSpriteStatusLabel.Text = $"已缓存 {done} 张{failNote}";
-            AnimRingLabel.Text         = "✓";
-        }
-        else
-        {
-            AnimSpriteStatusLabel.Text = "约 200 MB · 缓存全部宝可梦的动态立绘 GIF";
-            AnimRingLabel.Text         = "";
-        }
-    }
-
-    private void OnAnimRingPaint(object sender, SKPaintSurfaceEventArgs e)
-        => PaintProgressRing(e, SpriteCacheService.BulkProgress, SpriteCacheService.IsBulkDownloading);
-
-    // ── Shared log helper ─────────────────────────────────────────────────────
-
-    private void AppendLog(Border panel, Label label, ScrollView scroll,
-                           System.Text.StringBuilder sb, ref int lineCount,
-                           string slug, bool success)
-    {
-        if (success) return;
-
-        panel.IsVisible = true;
-
-        // Trim oldest lines when cap is reached
-        if (lineCount >= MaxLogLines)
-        {
-            var text  = sb.ToString();
-            int cut   = 0;
-            int found = 0;
-            // Drop first MaxLogLines/4 lines
-            int dropCount = MaxLogLines / 4;
-            while (found < dropCount && cut < text.Length)
-            {
-                if (text[cut++] == '\n') found++;
-            }
-            sb.Clear();
-            sb.Append(text.AsSpan(cut));
-            lineCount -= found;
-        }
-
-        sb.Append("✗ ");
-        sb.AppendLine(slug);
-        lineCount++;
-
-        label.Text = sb.ToString();
-        _ = scroll.ScrollToAsync(0, double.MaxValue, false);
-    }
-
-    // ── Shared ring painter ───────────────────────────────────────────────────
-
-    private static void PaintProgressRing(SKPaintSurfaceEventArgs e, (int Done, int Total, int Failed) progress, bool running)
-    {
-        var canvas = e.Surface.Canvas;
-        canvas.Clear(SKColors.Transparent);
-
-        var (done, total, _) = progress;
-        float pct = total > 0 ? Math.Clamp((float)done / total, 0f, 1f) : 0f;
-
-        float cx = e.Info.Width  / 2f;
-        float cy = e.Info.Height / 2f;
-        float r  = Math.Min(cx, cy) - 4f;
-
-        bool light = ThemeService.Current == PkTheme.Light;
-
-        using var trackPaint = new SKPaint
-        {
-            Style       = SKPaintStyle.Stroke,
-            StrokeWidth = 5f,
-            Color       = light ? new SKColor(200, 210, 230) : new SKColor(40, 55, 80),
-            IsAntialias = true,
-        };
-        canvas.DrawCircle(cx, cy, r, trackPaint);
-
-        if (!running && total == 0)
-        {
-            using var arrowPaint = new SKPaint { Color = new SKColor(100, 160, 220), IsAntialias = true, StrokeWidth = 2.5f, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
-            float ax = cx, ay1 = cy - r * 0.45f, ay2 = cy + r * 0.2f;
-            canvas.DrawLine(ax, ay1, ax, ay2, arrowPaint);
-            using var path = new SKPath();
-            path.MoveTo(ax - r * 0.3f, ay2 - r * 0.25f);
-            path.LineTo(ax, ay2);
-            path.LineTo(ax + r * 0.3f, ay2 - r * 0.25f);
-            canvas.DrawPath(path, arrowPaint);
-            return;
-        }
-
-        var arcColor = !running && total > 0
-            ? new SKColor(52, 217, 144)
-            : new SKColor(59, 139, 255);
-
-        using var arcPaint = new SKPaint
-        {
-            Style       = SKPaintStyle.Stroke,
-            StrokeWidth = 5f,
-            Color       = arcColor,
-            IsAntialias = true,
-            StrokeCap   = SKStrokeCap.Round,
-        };
-
-        float sweep = pct * 360f;
-        var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
-        canvas.DrawArc(rect, -90f, sweep, false, arcPaint);
-    }
-
-    // ── 新增存档（逐个添加，有多少个模拟器就点多少次）────────────────────────
+    // ── 存档文件夹入口，有多少个模拟器就点多少次）────────────────────────
 
     /// <summary>点击「管理存档文件夹」进入管理页（手柄和触摸都能进）。</summary>
     private async void OnFoldersTapped(object? sender, EventArgs e)
@@ -633,45 +357,6 @@ public partial class SettingsPage : ContentPage
         }
     }
 
-    private async void OnAddSaveClicked(object sender, EventArgs e)
-    {
-        try
-        {
-            var uri = await _filePicker.PickFileAsync();
-            if (uri is null) return;
-
-            // 先验证：能不能识别成存档，避免"加进去了但首页还是读不到"
-            var entry = await _dirService.ScanFileAsync(uri);
-            if (entry is null)
-            {
-                await DisplayAlertAsync(
-                    "无法识别",
-                    "这个文件不是可识别的宝可梦存档。\n\n"
-                    + "3DS 一般是没有扩展名的 main 文件，NDS 是 .dsv / .sav，GBA 是 .sav，"
-                    + "Switch 是 main。请确认选的是存档本身，不是 ROM 或存档文件夹。",
-                    "好");
-                return;
-            }
-
-            _dirService.AddFile(uri);
-            SessionState.RequestAdd(uri, true);   // 首页只读这一个，不触发全量重扫
-            _session.RescanNeeded = false;
-            ScanReport.Add($"手动新增存档：{entry.FileName}（第 {entry.Generation} 世代）");
-
-            await DisplayAlertAsync(
-                "已新增存档",
-                $"第 {entry.Generation} 世代 · {entry.Version}\n"
-                + $"训练家：{entry.TrainerName}\n"
-                + $"游戏时间：{entry.PlayTime}\n\n"
-                + "已加入存档列表，回首页就能看到。还有别的模拟器就再点一次「新增存档」。",
-                "好");
-        }
-        catch (Exception ex)
-        {
-            CrashLog.Write("SettingsPage.OnAddSaveClicked", ex);
-            await DisplayAlertAsync("新增失败", ex.Message, "好");
-        }
-    }
 
     // ── Stub pickers for non-Android ─────────────────────────────────────────
 
