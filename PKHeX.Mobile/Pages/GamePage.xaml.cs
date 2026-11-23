@@ -298,11 +298,14 @@ public partial class GamePage : ContentPage
         BindBoxHintTaps();
 
 #if ANDROID
-        // 诊断：返回后延迟一帧打印各行的实测高度（排查银行页/箱子页 2.5dp 位移）
+        // 诊断（临时）：返回后两个时间点打印各行的实测高度，排查银行页/箱子页 2.5dp 位移
+        Services.DiagLog.Add("game appear enter");
+        void LogOnce(string when) =>
+            Services.DiagLog.Add($"game {when} page={Height:0.0} strip={PhoneTrainerStrip.Height:0.0} nav={BoxNavRow.Height:0.0} search={BoxSearchRow.Height:0.0} canvas={BoxCanvas.Height:0.0} canvasY={BoxCanvas.Frame.Y:0.0} bottomY={BottomGrid.Frame.Y:0.0} bottom={BottomGrid.Height:0.0} info={InfoBarGrid.Height:0.0}");
         Dispatcher.Dispatch(async () =>
         {
-            await Task.Delay(700);
-            Console.WriteLine($"[LAYOUT] game page={Height:0.0} strip={PhoneTrainerStrip.Height:0.0} nav={BoxNavRow.Height:0.0} search={BoxSearchRow.Height:0.0} canvas={BoxCanvas.Height:0.0} canvasY={BoxCanvas.Frame.Y:0.0} bottomY={BottomGrid.Frame.Y:0.0} bottom={BottomGrid.Height:0.0} info={InfoBarGrid.Height:0.0}");
+            await Task.Delay(700);  LogOnce("t700");
+            await Task.Delay(900);  LogOnce("t1600");
         });
 #endif
     }

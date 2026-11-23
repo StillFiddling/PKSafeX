@@ -236,6 +236,30 @@
                 </Grid>
             </Border>
 
+            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
+
+            <!-- 诊断日志导出（临时排查用，正式版移除） -->
+            <Border x:Name="Row_ExportDiag"
+                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
+                    StrokeShape="RoundRectangle 6" Padding="12,10">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnExportDiagTapped" />
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="*,Auto">
+                    <VerticalStackLayout Grid.Column="0" Spacing="4">
+                        <Label Text="导出布局日志"
+                               FontAttributes="Bold" FontSize="15"
+                               TextColor="{DynamicResource ThTextPrimary}" />
+                        <Label x:Name="DiagLogSummaryLabel"
+                               Text="临时诊断：记录箱子页/银行页各行的实测高度，点一下用系统分享发出"
+                               FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
+                    </VerticalStackLayout>
+                    <Label Grid.Column="1" Text="›" FontSize="20"
+                           TextColor="{DynamicResource ThTextDim}"
+                           VerticalOptions="Center" Margin="8,0,0,0" />
+                </Grid>
+            </Border>
+
             </VerticalStackLayout>
     </ScrollView>
 

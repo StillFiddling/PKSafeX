@@ -78,11 +78,14 @@ public partial class BankPage : ContentPage
         BuildHintBar();
 
 #if ANDROID
-        // 诊断：打印银行页各行的实测高度，与箱子页对齐比对
+        // 诊断（临时）：银行页两个时间点的行高，与箱子页比对
+        Services.DiagLog.Add("bank appear enter");
+        void LogOnce(string when) =>
+            Services.DiagLog.Add($"bank {when} page={Height:0.0} header={HeaderRow.Height:0.0} nav={NavRow.Height:0.0} banner={ModeBanner.Height:0.0}/{ModeBanner.IsVisible} spacer={BoxTopSpacer.Height:0.0} canvas={BankCanvas.Height:0.0} canvasY={BankCanvas.Frame.Y:0.0} info={BankInfoBar.Height:0.0}");
         Dispatcher.Dispatch(async () =>
         {
-            await Task.Delay(700);
-            Console.WriteLine($"[LAYOUT] bank page={Height:0.0} header={HeaderRow.Height:0.0} nav={NavRow.Height:0.0} banner={ModeBanner.Height:0.0}/{ModeBanner.IsVisible} spacer={BoxTopSpacer.Height:0.0} canvas={BankCanvas.Height:0.0} canvasY={BankCanvas.Frame.Y:0.0} info={BankInfoBar.Height:0.0}");
+            await Task.Delay(700);  LogOnce("t700");
+            await Task.Delay(900);  LogOnce("t1600");
         });
 #endif
     }
@@ -672,6 +675,7 @@ public partial class BankPage : ContentPage
         if (exitDir != 0) _session.BankSlideDir = exitDir;
 
         double exitX = _session.BankSlideDir < 0 ? -500 : 500;
+        Services.DiagLog.Add($"bank exit begin dir={exitDir}");
         await RootGrid.TranslateToAsync(exitX, 0, 260, Easing.CubicInOut);
         RootGrid.TranslationX = 0;
         await Shell.Current.GoToAsync("..", false);

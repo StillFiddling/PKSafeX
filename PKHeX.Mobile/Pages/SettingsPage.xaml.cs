@@ -93,7 +93,8 @@ public partial class SettingsPage : ContentPage
     private void BuildRows()
     {
         _rows = [Row_Language, Row_Shiny, Row_Radar, Row_Folders, Row_AutoScan,
-                 Row_Legality, Row_Theme, Row_HeroBg, Row_Animated3D, Row_Sprites, Row_AnimSprites];
+                 Row_Legality, Row_Theme, Row_HeroBg, Row_Animated3D, Row_Sprites, Row_AnimSprites,
+                 Row_ExportDiag];
     }
 
     /// <summary>两行入口各显示一行缓存概况，具体操作在二级页完成。</summary>
@@ -248,6 +249,37 @@ public partial class SettingsPage : ContentPage
             case 10:
                 _ = OpenSpriteSourcePage("anim");
                 break;
+            case 11:
+                _ = ExportDiagAsync();
+                break;
+        }
+    }
+
+    private async void OnExportDiagTapped(object? sender, TappedEventArgs e)
+        => await ExportDiagAsync();
+
+    /// <summary>诊断（临时）：把布局日志写成文本，调系统分享发出。</summary>
+    private async Task ExportDiagAsync()
+    {
+        try
+        {
+            if (DiagLog.Count == 0)
+            {
+                await DisplayAlertAsync("还没有日志",
+                    "请先进箱子页，再进银行页，然后按 B 返回箱子页，来回几次后再导出。", "好");
+                return;
+            }
+
+            var path = DiagLog.Dump();
+            await Share.Default.RequestAsync(new ShareFileRequest
+            {
+                Title = "PKSafe 布局诊断日志",
+                File  = new ShareFile(path),
+            });
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("导出失败", ex.Message, "好");
         }
     }
 
