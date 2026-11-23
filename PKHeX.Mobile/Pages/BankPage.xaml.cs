@@ -14,7 +14,7 @@ public partial class BankPage : ContentPage
 
     private readonly ISecondaryDisplay        _secondary;
     private readonly SessionState             _session;
-    private readonly BankService              _bank    = new();
+    private readonly BankService              _bank    = BankService.Instance;
     private readonly FileSystemSpriteRenderer _sprites = new();
     private readonly GameStrings              _strings = GameLang.Strings;
 
@@ -373,19 +373,19 @@ public partial class BankPage : ContentPage
     //  Actions
     // ──────────────────────────────────────────────
 
-    private void HandleActivate()
+    private async void HandleActivate()
     {
         // Deposit mode: arriving from game with a Pokémon to place
         if (_session.PendingMove != null && !_session.PendingFromBank)
         {
-            ExecuteDeposit();
+            await ConfirmDepositAsync();
             return;
         }
 
         // Withdraw move mode: drop grabbed Pokémon (swap with slot contents)
         if (_moveMode && _movePk != null)
         {
-            ExecuteWithdrawDrop();
+            await ConfirmBankInternalMoveAsync();
             return;
         }
 
@@ -402,47 +402,168 @@ public partial class BankPage : ContentPage
         }
     }
 
-    private void ExecuteDeposit()
+    // ──────────────────────────────────────────────
+    //  确认弹窗 + 两阶段提交（先写目标，再清来源）
+    // ──────────────────────────────────────────────
+
+    private bool _confirmingDeposit;
+
+    private string SpeciesNameOf(PKM pk)
+        => pk.Species > 0 && pk.Species < _strings.specieslist.Length
+            ? _strings.specieslist[pk.Species]
+            : "?";
+
+    /// <summary>
+    /// 从箱子页带一只宝可梦来银行：确认前不动任何数据。
+    /// 确认 → 先写银行并落盘，再清空箱子原格并写回存档；写回失败整笔回滚。
+    /// 取消 → 宝可梦原样留在箱子里（只在内存中），返回箱子页。
+    /// </summary>
+    private async Task ConfirmDepositAsync()
     {
-        var pk = _session.PendingMove!;
-        _bank.Deposit(_boxIndex, _cursorSlot, pk);
+        if (_confirmingDeposit) return;
 
-        // Clear source game slot and immediately write back the save file so the
-        // bank and the save on disk stay in sync. Without writeback the slot is only
-        // cleared in memory; if the user never manually saves, the Pokémon appears
-        // in both the save file and the bank (apparent clone).
-        if (_session.ActiveSave != null && _session.PendingSourceBox == -2)
+        var pk = _session.PendingMove;
+        if (pk is null) return;
+
+        var occ = _cursorSlot >= 0 && _cursorSlot < _currentSlots.Length ? _currentSlots[_cursorSlot] : null;
+        var target = $"银行 {_boxIndex + 1} 第 {_cursorSlot + 1} 格";
+
+        var msg = occ?.Species > 0
+            ? $"{SpeciesNameOf(pk)} Lv.{pk.CurrentLevel} 将存入 {target}。\n该格现有 {SpeciesNameOf(occ)}，会被替换。"
+            : $"{SpeciesNameOf(pk)} Lv.{pk.CurrentLevel} 将存入 {target}。";
+
+        msg += "\n\n确认后：写入银行 → 清空箱子原格并写回存档。\n取消后：宝可梦原样留在箱子，不做任何改动。";
+
+        _confirmingDeposit = true;
+        bool ok;
+        try
         {
-            // Source was a party slot
-            _session.ActiveSave.SetPartySlotAtIndex(
-                _session.ActiveSave.BlankPKM,
-                _session.PendingSourceSlot);
-            _session.PendingSourceBox  = -1;
-            _session.PendingSourceSlot = -1;
+            ok = await DisplayAlertAsync("确认存入？", msg, "确认存入", "取消存入");
         }
-        if (_session.ActiveSave != null && _session.PendingSourceBox >= 0)
+        finally
         {
-            _session.ActiveSave.SetBoxSlotAtIndex(
-                _session.ActiveSave.BlankPKM,
-                _session.PendingSourceBox,
-                _session.PendingSourceSlot);
+            _confirmingDeposit = false;
+        }
+
+        if (!ok)
+        {
+            // 回退箱子：清掉待存入状态，原格不动
+            _session.PendingMove       = null;
+            _session.PendingFromBank   = false;
             _session.PendingSourceBox  = -1;
             _session.PendingSourceSlot = -1;
+            UpdateModeBanner();
+            LoadBox(_boxIndex);
+            await SwapToGame();
+            return;
+        }
 
-            if (!string.IsNullOrEmpty(_session.ActiveSaveFileUri))
+        var sav        = _session.ActiveSave;
+        var sourceBox  = _session.PendingSourceBox;
+        var sourceSlot = _session.PendingSourceSlot;
+        var prevOcc    = occ?.Clone();
+        bool bankWritten = false;
+        bool merged = false;
+
+        try
+        {
+            // 阶段 1：写银行（先落盘，才允许清箱子）
+            _bank.Deposit(_boxIndex, _cursorSlot, pk, persist: false);
+            await _bank.SaveAsync();
+            bankWritten = true;
+
+            // 阶段 2：清空箱子来源并写回存档。
+            // 若检测到游戏已保存过（磁盘比内存新），只把「清空这一格」合并到最新存档上，
+            // 不会把软件里的旧快照整份覆盖回去。
+            if (sav is not null)
             {
-                var data = _session.ActiveSave.Write().ToArray();
-                _ = Task.Run(async () =>
+                var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
                 {
-                    try { await new FileService().WriteBackAsync(data, _session.ActiveSaveFileUri); }
-                    catch { /* writeback failure is non-fatal; user can still manually save */ }
+                    if (sourceBox == -2)
+                        s.SetPartySlotAtIndex(s.BlankPKM, sourceSlot);
+                    else if (sourceBox >= 0)
+                        s.SetBoxSlotAtIndex(s.BlankPKM, sourceBox, sourceSlot);
                 });
+
+                if (result is SaveWriteResult.NoUri or SaveWriteResult.StaleUnreadable)
+                    throw new InvalidOperationException(result == SaveWriteResult.NoUri
+                        ? "找不到原存档文件位置，请改用「导出」。"
+                        : "存档已被游戏更新且无法解析，请回首页重新加载存档后再试。");
+
+                merged = result == SaveWriteResult.MergedIntoLatest;
             }
+
+            _session.PendingMove       = null;
+            _session.PendingFromBank   = false;
+            _session.PendingSourceBox  = -1;
+            _session.PendingSourceSlot = -1;
+
+            UpdateModeBanner();
+            LoadBox(_boxIndex);
+            await SwapToGame();
+
+            if (merged)
+                await DisplayAlertAsync("已存入（含并最新进度）",
+                    "检测到你在游戏里已经保存过比软件更新的存档。\n本次操作只把这一格的改动合并进最新存档，你在游戏里的进度没有被覆盖。",
+                    "OK");
+        }
+        catch (Exception ex)
+        {
+            // 回滚：银行槽恢复原样，箱子不动
+            if (bankWritten)
+            {
+                if (prevOcc is not null && prevOcc.Species > 0)
+                    _bank.Deposit(_boxIndex, _cursorSlot, prevOcc, persist: false);
+                else
+                    _bank.ClearSlot(_boxIndex, _cursorSlot, persist: false);
+                await _bank.SaveAsync();
+            }
+
+            await DisplayAlertAsync("存入失败，已回退",
+                $"写回存档失败，宝可梦仍留在箱子里，银行未做改动。\n\n{ex.Message}", "OK");
+
+            UpdateModeBanner();
+            LoadBox(_boxIndex);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    //  银行内部移动（换位）确认
+    // ──────────────────────────────────────────────
+
+    private bool _confirmingInternal;
+
+    private async Task ConfirmBankInternalMoveAsync()
+    {
+        if (_confirmingInternal || _movePk is null) return;
+
+        var pk = _movePk;
+        var dest = _cursorSlot >= 0 && _cursorSlot < _currentSlots.Length ? _currentSlots[_cursorSlot] : null;
+        var target = $"银行 {_boxIndex + 1} 第 {_cursorSlot + 1} 格";
+
+        var msg = dest?.Species > 0
+            ? $"{SpeciesNameOf(pk)} 将移动到 {target}，与该格的 {SpeciesNameOf(dest)} 互换。"
+            : $"{SpeciesNameOf(pk)} 将移动到 {target}，原格子会清空。";
+
+        _confirmingInternal = true;
+        bool ok;
+        try
+        {
+            ok = await DisplayAlertAsync("确认移动？", msg + "\n\n取消则保持原位，不做任何改动。", "确认移动", "取消");
+        }
+        finally
+        {
+            _confirmingInternal = false;
         }
 
-        _session.PendingMove = null;
-        LoadBox(_boxIndex);
-        UpdateModeBanner();
+        if (!ok)
+        {
+            CancelMoveMode();
+            LoadBox(_boxIndex);
+            return;
+        }
+
+        ExecuteWithdrawDrop();
     }
 
     private void EnterWithdrawMode()

@@ -668,17 +668,17 @@ public partial class SecondScreenPage : ContentPage
         switch (step)
         {
             case 0:
-                WelcomeStepHeader.Text   = "Choose your look";
-                WelcomeStepSubtitle.Text = "Step 1 of 3";
+                WelcomeStepHeader.Text   = "选择外观";
+                WelcomeStepSubtitle.Text = "第 1 步 / 共 3 步";
                 break;
             case 1:
-                WelcomeStepHeader.Text   = "Connect your saves";
-                WelcomeStepSubtitle.Text = "Step 2 of 3";
+                WelcomeStepHeader.Text   = "连接存档";
+                WelcomeStepSubtitle.Text = "第 2 步 / 共 3 步";
                 ResetEmulatorStatuses();
                 break;
             case 2:
                 WelcomeStepHeader.Text   = "全部完成！";
-                WelcomeStepSubtitle.Text = "Step 3 of 3";
+                WelcomeStepSubtitle.Text = "第 3 步 / 共 3 步";
                 UpdateFoundSummary();
                 break;
         }

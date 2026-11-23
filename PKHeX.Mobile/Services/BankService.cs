@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Threading.Channels;
 using PKHeX.Core;
 
 namespace PKHeX.Mobile.Services;
@@ -9,6 +8,12 @@ public class BankService
     public const int SlotsPerBox = 30;
     private const string FileName = "bank.json";
 
+    /// <summary>
+    /// 全应用唯一实例。银行是全局数据，任何页面都必须用它读写，
+    /// 否则各页面各自持有一份快照，整份覆盖写会把别人刚存进去的条目抹掉。
+    /// </summary>
+    public static BankService Instance { get; } = new();
+
     private static string FilePath =>
         Path.Combine(FileSystem.AppDataDirectory, FileName);
 
@@ -17,31 +22,49 @@ public class BankService
 
     public BankService() => _boxes = Load();
 
-    // ── Background write queue ────────────────────────────────────
+    // ── Persistence ───────────────────────────────────────────────
     //
-    // Writes are serialized through a bounded channel (capacity 1, DropOldest).
-    // Rapid saves (e.g. rapid deposits) collapse into a single disk write of the
-    // latest state, avoiding both main-thread blocking and write storms.
+    // 写盘改为「先写 .tmp，备份旧文件为 .bak，再原子替换」，
+    // 避免写到一半被杀进程导致 bank.json 截断、整库归零。
+    // 所有写操作经同一把锁串行，调用顺序即落盘顺序。
 
-    private static readonly Channel<string> _writeQueue = Channel.CreateBounded<string>(
-        new BoundedChannelOptions(1)
-        {
-            FullMode    = BoundedChannelFullMode.DropOldest,
-            SingleReader = true,
-        });
+    private static readonly SemaphoreSlim _ioLock = new(1, 1);
 
-    static BankService()
+    /// <summary>异步保存；关键流程（存入/取出）必须 await 它确认已落盘。</summary>
+    public async Task SaveAsync()
     {
-        // Long-lived background consumer — one writer loop for the app lifetime.
-        _ = Task.Run(async () =>
+        var json = JsonSerializer.Serialize(_boxes);
+
+        await _ioLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            await foreach (var json in _writeQueue.Reader.ReadAllAsync().ConfigureAwait(false))
+            var dir = Path.GetDirectoryName(FilePath);
+            if (dir is not null) Directory.CreateDirectory(dir);
+
+            var tmp = FilePath + ".tmp";
+            await File.WriteAllTextAsync(tmp, json).ConfigureAwait(false);
+
+            try
             {
-                try   { await File.WriteAllTextAsync(FilePath, json).ConfigureAwait(false); }
-                catch { /* disk write failed; next Save() will retry */ }
+                if (File.Exists(FilePath))
+                    File.Copy(FilePath, FilePath + ".bak", overwrite: true);
             }
-        });
+            catch { /* 备份失败不阻断主流程 */ }
+
+            File.Move(tmp, FilePath, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(FilePath + ".tmp")) File.Delete(FilePath + ".tmp"); } catch { }
+        }
+        finally
+        {
+            _ioLock.Release();
+        }
     }
+
+    /// <summary>即发即忘的保存（普通 UI 操作使用）。</summary>
+    public void Save() => _ = SaveAsync();
 
     // ── Corruption warning ────────────────────────────────────────
 
@@ -73,26 +96,48 @@ public class BankService
             }
             catch
             {
-                // Back up the corrupt file so the user can recover it manually.
+                // 主文件损坏：先把坏文件留档，再尝试用上一次的完整备份恢复，
+                // 避免用户看到「银行被清空」。
                 try
                 {
                     var backupPath = FilePath + ".bak";
-                    File.Copy(FilePath, backupPath, overwrite: true);
-                    _corruptBackupPath = backupPath;
+                    File.Copy(FilePath, FilePath + ".corrupt", overwrite: true);
+
+                    if (File.Exists(backupPath))
+                    {
+                        var bakJson = File.ReadAllText(backupPath);
+                        var bakData = JsonSerializer.Deserialize<List<BankBox>>(bakJson);
+                        if (bakData is { Count: > 0 })
+                        {
+                            _corruptBackupPath = backupPath;
+                            return bakData;
+                        }
+                    }
+
+                    _corruptBackupPath = FilePath + ".corrupt";
                 }
-                catch { /* backup failed — still fall back to defaults */ }
+                catch { /* 备份失败 — 仍回退默认箱 */ }
             }
         }
-        return DefaultBoxes();
-    }
 
-    public void Save()
-    {
-        // Serialize on the calling thread (fast), then hand off to the background writer.
-        // TryWrite never blocks — if the queue is full the oldest pending write is dropped
-        // because the in-memory state it encoded is already stale.
-        var json = JsonSerializer.Serialize(_boxes);
-        _writeQueue.Writer.TryWrite(json);
+        // 主文件不存在但备份存在：直接用备份恢复
+        try
+        {
+            var backupPath = FilePath + ".bak";
+            if (!File.Exists(FilePath) && File.Exists(backupPath))
+            {
+                var bakJson = File.ReadAllText(backupPath);
+                var bakData = JsonSerializer.Deserialize<List<BankBox>>(bakJson);
+                if (bakData is { Count: > 0 })
+                {
+                    _corruptBackupPath = backupPath;
+                    return bakData;
+                }
+            }
+        }
+        catch { }
+
+        return DefaultBoxes();
     }
 
     private static List<BankBox> DefaultBoxes()
@@ -113,21 +158,22 @@ public class BankService
 
     // ── Deposit / withdraw ────────────────────────────────────────
 
-    public void Deposit(int box, int slot, PKM pk)
+    /// <param name="persist">false 时不自动落盘，由调用方 await <see cref="SaveAsync"/> 统一提交。</param>
+    public void Deposit(int box, int slot, PKM pk, bool persist = true)
     {
         EnsureBox(box);
         EnsureSlots(_boxes[box]);
         _boxes[box].Slots[slot] = BankSlot.FromPKM(pk);
         AutoExpand();
-        Save();
+        if (persist) Save();
     }
 
-    public void ClearSlot(int box, int slot)
+    public void ClearSlot(int box, int slot, bool persist = true)
     {
         if (box >= _boxes.Count) return;
         EnsureSlots(_boxes[box]);
         _boxes[box].Slots[slot] = null;
-        Save();
+        if (persist) Save();
     }
 
     public BankSlot? GetSlot(int box, int slot)

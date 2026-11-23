@@ -523,7 +523,7 @@
                             BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
                             StrokeShape="RoundRectangle 6" Padding="8,6">
                         <Grid ColumnDefinitions="110,*">
-                            <Label Grid.Column="0" Text="Ball"
+                            <Label Grid.Column="0" Text="球种"
                                    VerticalOptions="Center" TextColor="{DynamicResource ThTextSecondary}" />
                             <Label Grid.Column="1" x:Name="BallLabel"
                                    VerticalOptions="Center" TextColor="{DynamicResource ThTextPrimary}" />

@@ -11,12 +11,12 @@
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto"
               BackgroundColor="{DynamicResource ThCardBg}"
               Padding="18,14,18,12">
-            <Label Text="SEARCH"
+            <Label Text="搜索"
                    FontFamily="NunitoBold" FontSize="11"
                    TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.5"
                    VerticalOptions="Center" />
             <Label Grid.Column="1"
-                   Text="↕ nav  A select  B back"
+                   Text="↕ 移动  A 选择  B 返回"
                    FontFamily="Nunito" FontSize="9"
                    TextColor="{DynamicResource ThTextHint}"
                    VerticalOptions="Center" />

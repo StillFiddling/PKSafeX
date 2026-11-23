@@ -176,6 +176,10 @@ public partial class GamePage : ContentPage
         bool freshSave = _sav != sav;
         _sav = sav;
 
+        // 若磁盘存档已被游戏更新，进页面时提示一次重新加载（有带走中的宝可梦时不打扰）
+        if (_session.PendingMove is null && !_session.PendingFromBank)
+            _ = CheckStaleOnEnterAsync();
+
         _isPhone = !_secondary.IsAvailable;
 
         // Always reset so WebView reloads cleanly after any navigation away.
@@ -2040,17 +2044,78 @@ public partial class GamePage : ContentPage
         }
         try
         {
-            var data = _sav.Write().ToArray();
-            await new FileService().WriteBackAsync(data, _session.ActiveSaveFileUri);
-            await DisplayAlertAsync("已保存", $"Written back to {_session.ActiveSaveFileName}.", "OK");
+            // 写回前先判断磁盘存档是否比内存新（玩家可能刚在游戏里存过档）
+            if (await SaveSyncService.IsStaleAsync(_session))
+            {
+                var choice = await DisplayActionSheetAsync(
+                    "存档已在游戏内更新",
+                    "取消",
+                    "强制覆盖（会丢失游戏进度）",
+                    "重新加载最新存档");
+
+                if (choice == "重新加载最新存档")
+                {
+                    if (await SaveSyncService.ReloadFromDiskAsync(_session))
+                    {
+                        _sav = _session.ActiveSave!;
+                        LoadBox(_boxIndex);
+                        UpdateTopPanel();
+                        await DisplayAlertAsync("已重新加载", "已读取磁盘上的最新存档，软件内未保存的改动已放弃。", "OK");
+                    }
+                    else
+                    {
+                        await DisplayAlertAsync("重新加载失败", "磁盘上的存档无法解析，未做任何写入。", "OK");
+                    }
+                    return;
+                }
+
+                if (choice != "强制覆盖（会丢失游戏进度）")
+                    return;
+            }
+
+            await SaveSyncService.ForceWriteAsync(_session);
+            await DisplayAlertAsync("已保存", $"已写回 {_session.ActiveSaveFileName}。", "OK");
         }
         catch (Exception ex)
         {
             bool isPermission = ex.Message.Contains("Permission") || ex.Message.Contains("permission");
             string msg = isPermission
-                ? "Write permission denied. Go to Settings → Find Azahar/MelonDS/RetroArch Saves and re-grant folder access, then try again."
+                ? "写入权限被拒绝。请到「设置 → 查找 Azahar / MelonDS / RetroArch 存档」重新授权文件夹后重试。"
                 : ex.Message;
             await DisplayAlertAsync("保存失败", msg, "OK");
+        }
+    }
+
+    /// <summary>进入箱子页时检查磁盘存档是否已被游戏更新，提示一次重新加载。</summary>
+    private async Task CheckStaleOnEnterAsync()
+    {
+        if (_sav is null) return;
+        if (string.IsNullOrEmpty(_session.ActiveSaveFingerprint)) return;
+
+        var disk = await SaveSyncService.ReadDiskBytesAsync(_session);
+        if (disk is null) return;
+
+        var fp = SaveSyncService.Fingerprint(disk);
+        if (fp == _session.ActiveSaveFingerprint) return;
+        if (_session.PromptedStaleFingerprint == fp) return;
+        _session.PromptedStaleFingerprint = fp;
+
+        bool reload = await DisplayAlertAsync("存档已被更新",
+            "磁盘上的存档比软件里加载的更新（可能是你在游戏里保存过）。\n\n是否重新加载最新进度？\n\n"
+            + "先不重新加载也可以继续操作：之后的存入 / 取出只会把「这一格」的改动合并到最新存档上，不会覆盖你在游戏里的进度。",
+            "重新加载", "稍后");
+
+        if (!reload) return;
+
+        if (await SaveSyncService.ReloadFromDiskAsync(_session))
+        {
+            _sav = _session.ActiveSave!;
+            LoadBox(_boxIndex);
+            UpdateTopPanel();
+        }
+        else
+        {
+            await DisplayAlertAsync("重新加载失败", "磁盘上的存档无法解析，仍使用软件内已加载的版本。", "OK");
         }
     }
 

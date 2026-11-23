@@ -636,7 +636,7 @@
             <HorizontalStackLayout Grid.Row="0" Spacing="10">
                 <Label Text="&#xe466;" FontFamily="PhosphorFill" FontSize="28"
                        TextColor="{DynamicResource ThAccent}" VerticalOptions="Center" />
-                <Label Text="Pokédex" FontFamily="NunitoBold" FontSize="26"
+                <Label Text="图鉴" FontFamily="NunitoBold" FontSize="26"
                        TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
             </HorizontalStackLayout>
 

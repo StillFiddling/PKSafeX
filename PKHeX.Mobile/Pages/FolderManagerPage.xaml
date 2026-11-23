@@ -7,7 +7,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{DynamicResource ThSettingsBg}">
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16"
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Padding="16"
           BackgroundColor="{DynamicResource ThSettingsBg}">
 
         <!-- Header -->
@@ -39,8 +39,25 @@
                FontSize="10" TextColor="{DynamicResource ThTextDim}"
                HorizontalOptions="End" Margin="0,0,0,8" />
 
+        <!-- 权限提示条：没授权时一直显示，点了直接跳系统设置 -->
+        <Border x:Name="PermissionBanner" Grid.Row="2" IsVisible="False"
+                Margin="0,0,0,8" Padding="12,10"
+                StrokeShape="RoundRectangle 6" Stroke="#FFB020" StrokeThickness="1"
+                BackgroundColor="Transparent">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnGrantClicked" />
+            </Border.GestureRecognizers>
+            <VerticalStackLayout Spacing="4">
+                <Label Text="⚠ 还没开「所有文件访问」权限"
+                       FontFamily="NunitoBold" FontSize="14"
+                       TextColor="#FFB020" />
+                <Label Text="Android/data 里的存档（AzaharPlus / Citra 等）读不到。点这里去授权 →"
+                       FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
+            </VerticalStackLayout>
+        </Border>
+
         <!-- Directory/file list -->
-        <CollectionView x:Name="DirList" Grid.Row="2"
+        <CollectionView x:Name="DirList" Grid.Row="3"
                         SelectionMode="Single"
                         BackgroundColor="Transparent">
             <CollectionView.EmptyView>
@@ -66,21 +83,18 @@
                                    FontSize="13"
                                    LineBreakMode="MiddleTruncation"
                                    VerticalOptions="Center" />
-                            <Border Grid.Column="2"
+                            <Button Grid.Column="2"
+                                    Text="🗑 移出"
+                                    Clicked="OnRemoveClicked"
+                                    CommandParameter="{Binding .}"
+                                    FontFamily="NunitoBold" FontSize="12"
+                                    TextColor="#FF6060"
                                     BackgroundColor="{DynamicResource ThNavBtnBg}"
-                                    StrokeShape="RoundRectangle 6"
-                                    Stroke="Transparent" Padding="10,6">
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer
-                                        Tapped="OnRemoveClicked"
-                                        CommandParameter="{Binding .}" />
-                                </Border.GestureRecognizers>
-                                <Label Text="{x:Static theme:Ph.Trash}"
-                                       FontFamily="Phosphor" FontSize="16"
-                                       TextColor="#FF6060"
-                                       VerticalOptions="Center"
-                                       HorizontalOptions="Center" />
-                            </Border>
+                                    CornerRadius="6"
+                                    Padding="10,4"
+                                    HeightRequest="34"
+                                    MinimumWidthRequest="78"
+                                    VerticalOptions="Center" />
                         </Grid>
                     </Border>
                 </DataTemplate>
@@ -88,7 +102,7 @@
         </CollectionView>
 
         <!-- Add buttons -->
-        <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,12,0,12">
+        <Grid Grid.Row="4" ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,12,0,12">
             <Border Grid.Column="0" StrokeShape="RoundRectangle 8"
                     BackgroundColor="{DynamicResource ThNavBtnBg}"
                     Stroke="{DynamicResource ThAccent}" Padding="0">
@@ -119,7 +133,7 @@
                            FontFamily="Phosphor" FontSize="20"
                            TextColor="{DynamicResource ThAccentLight}"
                            VerticalOptions="Center" />
-                    <Label Text="添加文件"
+                    <Label Text="新增存档"
                            FontFamily="NunitoBold" FontSize="15"
                            TextColor="{DynamicResource ThAccentLight}"
                            VerticalOptions="Center" />

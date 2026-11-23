@@ -179,7 +179,7 @@
                     <Label Text="X" FontFamily="NunitoExtraBold" FontSize="9" TextColor="#A78BFA"
                            HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
-                <Label Text="Moves" FontFamily="Nunito" FontSize="11"
+                <Label Text="招式" FontFamily="Nunito" FontSize="11"
                        TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
             </HorizontalStackLayout>
             <HorizontalStackLayout Spacing="4">
@@ -208,7 +208,7 @@
                     <Label Text="R1" FontFamily="NunitoExtraBold" FontSize="7" TextColor="#4FC3F7"
                            HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
-                <Label Text="Box" FontFamily="Nunito" FontSize="11"
+                <Label Text="箱子" FontFamily="Nunito" FontSize="11"
                        TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
             </HorizontalStackLayout>
         </HorizontalStackLayout>
@@ -236,7 +236,7 @@
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnPickerBackTapped"/>
                             </Border.GestureRecognizers>
-                            <Label Text="← Back" FontFamily="NunitoBold" FontSize="11"
+                            <Label Text="← 返回" FontFamily="NunitoBold" FontSize="11"
                                    TextColor="{DynamicResource ThTextSecondary}"/>
                         </Border>
                         <Label Grid.Column="1" x:Name="PickerTitle"

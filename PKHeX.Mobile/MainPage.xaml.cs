@@ -57,47 +57,305 @@ public partial class MainPage : ContentPage
     {
         _secondary = secondary;
         _session   = session;
-        InitializeComponent();
+        try
+        {
+            InitializeComponent();
+        }
+        catch (Exception ex)
+        {
+            // 记录到 crash.log，下次启动可看到真实原因；这里不再往上抛以免整个进程直接死掉
+            CrashLog.Write("MainPage.InitializeComponent", ex);
+        }
+
+        // 双击「N 个存档」小字 → 扫描诊断（看清每个文件夹为什么读不到存档）
+        try
+        {
+            var tap = new TapGestureRecognizer { NumberOfTapsRequired = 2 };
+            tap.Tapped += async (_, _) => await ShowScanReportAsync();
+            SaveCountLabel?.GestureRecognizers.Add(tap);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MainPage.ScanReportGesture", ex);
+        }
+    }
+
+    private async Task ShowScanReportAsync()
+    {
+        try
+        {
+            var closeBtn = new Button { Text = "关闭", HorizontalOptions = LayoutOptions.End };
+            var permBtn = new Button
+            {
+                Text = AllFilesAccess.IsGranted() ? "所有文件访问：已授权" : "授予「所有文件访问权限」",
+                IsEnabled = !AllFilesAccess.IsGranted(),
+            };
+            var page = new ContentPage
+            {
+                Title = "扫描诊断",
+                Content = new ScrollView
+                {
+                    Content = new VerticalStackLayout
+                    {
+                        Padding = 16,
+                        Children =
+                        {
+                            closeBtn,
+                            permBtn,
+                            new Label
+                            {
+                                Text = ScanReport.Text,
+                                FontSize = 11,
+                                LineBreakMode = LineBreakMode.WordWrap,
+                            },
+                        },
+                    },
+                },
+            };
+            permBtn.Clicked += (_, _) => AllFilesAccess.OpenSettings();
+            closeBtn.Clicked += async (_, _) =>
+            {
+                try { await Shell.Current.Navigation.PopModalAsync(); }
+                catch (Exception ex) { CrashLog.Write("MainPage.PopScanReport", ex); }
+            };
+            await Shell.Current.Navigation.PushModalAsync(page);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MainPage.ShowScanReport", ex);
+            await DisplayAlertAsync("扫描诊断", ScanReport.Text.Length > 900
+                ? ScanReport.Text[..900] + "\n…"
+                : ScanReport.Text, "关闭");
+        }
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
 
-        if (WelcomePage.ShouldShowWelcome())
+        try
+        {
+            await OnAppearingCoreAsync();
+        }
+        catch (Exception ex)
+        {
+            // 首页初始化出错不允许直接闪退：记录下来并提示，界面仍可用
+            CrashLog.Write("MainPage.OnAppearing", ex);
+            await ShowCrashAlertAsync("首页初始化异常", ex.Message);
+        }
+    }
+
+    private async Task OnAppearingCoreAsync()
+    {
+        bool showWelcome = false;
+        try
+        {
+            showWelcome = WelcomePage.ShouldShowWelcome();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MainPage.WelcomeCheck", ex);
+        }
+
+        if (showWelcome)
         {
             await Shell.Current.GoToAsync(nameof(WelcomePage), false);
             return;
         }
 
 #if ANDROID
-        GamepadRouter.KeyReceived -= OnGamepadKey;
-        GamepadRouter.KeyReceived += OnGamepadKey;
+        TryStep("GamepadRouter", () =>
+        {
+            GamepadRouter.KeyReceived -= OnGamepadKey;
+            GamepadRouter.KeyReceived += OnGamepadKey;
+        });
 #endif
-        ThemeService.ThemeChanged -= OnThemeChanged;
-        ThemeService.ThemeChanged += OnThemeChanged;
-        _secondary.Show();
+        TryStep("ThemeChanged", () =>
+        {
+            ThemeService.ThemeChanged -= OnThemeChanged;
+            ThemeService.ThemeChanged += OnThemeChanged;
+        });
+        TryStep("Secondary.Show", () => _secondary.Show());
+
         _actionTiles = [Tile_Gifts, Tile_Export, Tile_Bank, Tile_Dex, Tile_Settings];
         _partyImages  = [Party0, Party1, Party2, Party3, Party4, Party5];
 
-        bool dual = _secondary.IsAvailable;
-        BottomPanel.IsVisible = !dual;
-        ApplyMainPageLayout(dual, Width > Height);
+        TryStep("Secondary.IsAvailable", () =>
+        {
+            bool dual = _secondary.IsAvailable;
+            BottomPanel.IsVisible = !dual;
+            ApplyMainPageLayout(dual, Width > Height);
+        });
 
-        if (_session.RescanNeeded || _session.LoadedSaves.Count == 0)
+        // 先把上次扫描结果从磁盘缓存读出来：「重进软件」不再面对空白等好几分钟
+        bool usedCache = false;
+        if (_session.LoadedSaves.Count == 0)
+        {
+            var cached = SaveIndexCache.Load();
+            if (cached is { Count: > 0 })
+            {
+                _session.LoadedSaves = cached;
+                usedCache = true;
+            }
+        }
+
+        // 管理页等页面没有 SessionState 实例，通过静态标记要求重扫
+        if (SessionState.PendingFullRescan)
+        {
+            SessionState.PendingFullRescan = false;
+            _session.RescanNeeded = true;
+        }
+
+        if (SessionState.PendingAddCount > 0)
+        {
+            // 只处理刚新增的路径：已有卡片先原样铺上，新存档读到一个加一个
+            if (_session.LoadedSaves.Count > 0)
+                TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
+            _ = AddPendingSafeAsync();
+        }
+        else if (_session.RescanNeeded || _session.LoadedSaves.Count == 0)
         {
             // Show cached list immediately if available, then rescan in background.
             if (_session.LoadedSaves.Count > 0)
-                ApplySaveEntries(_session.LoadedSaves);
-            _ = RefreshSavesAsync();
+                TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
+            _ = RefreshSavesSafeAsync();
         }
         else
         {
             // Returning from GamePage — list is identical, just restore highlights.
-            RestoreAfterGamePage();
+            TryStep("RestoreAfterGamePage", RestoreAfterGamePage);
+            // 缓存铺出来的列表：后台只校验「有变化的文件」，不改动其它卡片
+            if (usedCache) _ = VerifyCachedSafeAsync();
         }
-        UpdateActionHighlight();
-        BindHomeHintTaps();
+        TryStep("UpdateActionHighlight", UpdateActionHighlight);
+        TryStep("BindHomeHintTaps", BindHomeHintTaps);
+
+        // 走到这里说明首页已可用，清除「启动未完成」标记
+        CrashLog.MarkBootHealthy();
+
+        // 上次若发生过未捕获异常，这里把摘要亮出来（可截图反馈，也可清理）
+        await ShowCrashAlertAsync(null, null);
+    }
+
+    /// <summary>执行一个启动步骤，失败只记录不抛出。</summary>
+    private static void TryStep(string tag, Action step)
+    {
+        try { step(); }
+        catch (Exception ex) { CrashLog.Write($"MainPage.{tag}", ex); }
+    }
+
+    private async Task RefreshSavesSafeAsync()
+    {
+        MarkRefreshing(true);
+        try
+        {
+            await RefreshSavesAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MainPage.RefreshSavesAsync", ex);
+        }
+        finally
+        {
+            MarkRefreshing(false);
+        }
+    }
+
+    /// <summary>校验缓存列表：只重读被外部改过的文件，其余原样保留。</summary>
+    private async Task VerifyCachedSafeAsync()
+    {
+        MarkRefreshing(true);
+        try
+        {
+            var verified = await _dirService.VerifyCachedAsync(_session.LoadedSaves);
+            if (verified.Count == 0) return;
+            _session.LoadedSaves = verified;
+            ApplySaveEntries(verified);
+            SaveIndexCache.Save(verified);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MainPage.VerifyCached", ex);
+        }
+        finally
+        {
+            MarkRefreshing(false);
+        }
+    }
+
+    /// <summary>刷新期间只在计数旁标注「刷新中…」，不动已有卡片。</summary>
+    private void MarkRefreshing(bool refreshing)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var n = Math.Max(_session.LoadedSaves.Count, _saveCards.Count);
+            SaveCountLabel.Text = refreshing ? $"{n} 个存档 · 刷新中…" : $"{n} 个存档";
+        });
+    }
+
+    /// <summary>增量处理「刚新增的存档」，不重扫、不清空、不重读其它文件。</summary>
+    private async Task AddPendingSafeAsync()
+    {
+        var pending = SessionState.TakePendingAdds();
+        if (pending.Count == 0) return;
+
+        MarkRefreshing(true);
+        var added = 0;
+        foreach (var (uri, isFile) in pending)
+        {
+            try
+            {
+                var found = await _dirService.ScanSingleAsync(uri, isFile);
+                foreach (var e in found)
+                {
+                    if (_session.LoadedSaves.Any(s => s.FileUri == e.FileUri)) continue;
+                    _session.LoadedSaves.Add(e);
+                    added++;
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("MainPage.AddPending", ex);
+            }
+        }
+        MarkRefreshing(false);
+
+        if (added > 0)
+        {
+            ApplySaveEntries(_session.LoadedSaves);
+            SaveIndexCache.Save(_session.LoadedSaves);
+        }
+        else if (pending.Count > 0)
+            await DisplayAlertAsync(
+                "没读到存档",
+                "新增的路径里没有识别出存档。点击首页「N 个存档」小字双击可以打开扫描诊断，看具体原因。",
+                "好");
+    }
+
+    /// <summary>显示崩溃摘要。title/message 非空时表示本次刚发生错误。</summary>
+    private async Task ShowCrashAlertAsync(string? title, string? message)
+    {
+        try
+        {
+            if (title is not null)
+            {
+                await DisplayAlertAsync(title, message ?? "未知错误", "确定");
+                return;
+            }
+
+            if (!CrashLog.HasLog) return;
+
+            var log = CrashLog.ReadLast();
+            bool clear = await DisplayAlertAsync(
+                "上次运行出现异常",
+                $"{log}\n\n点「清除记录」可关闭此提示。",
+                "关闭", "清除记录");
+            if (clear) CrashLog.Clear();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MainPage.ShowCrashAlert", ex);
+        }
     }
 
     // 底部提示徽章 → 真按键（导航 / 选择 / 返回 / 搜索）
@@ -222,6 +480,7 @@ public partial class MainPage : ContentPage
         _session.LoadedSaves = entries;
         _session.RescanNeeded = false;
         ApplySaveEntries(entries);
+        SaveIndexCache.Save(entries);   // 下次进软件先读缓存，秒开
     }
 
     private void ApplySaveEntries(List<SaveEntry> entries)
@@ -673,6 +932,7 @@ public partial class MainPage : ContentPage
             _session.ActiveSave = sav;
             _session.ActiveSaveFileName = entry.FileName;
             _session.ActiveSaveFileUri = entry.FileUri;
+            SaveSyncService.CaptureBaseline(_session, entry.RawData.ToArray());
             _selectedSave = entry;
 
             var active = _saveCards.FirstOrDefault(c => c.Entry == entry);

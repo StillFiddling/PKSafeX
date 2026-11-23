@@ -667,18 +667,35 @@ public partial class PkmEditorPage : ContentPage
     {
         if (_pk is null || _session.ActiveSave is null) return;
         ApplyChanges();
-        if (_isParty)
-            _session.ActiveSave.SetPartySlotAtIndex(_pk, _slotIndex);
-        else
-            _session.ActiveSave.SetBoxSlotAtIndex(_pk, _boxIndex, _slotIndex);
 
         // Write back to original file if a URI is available
         if (!string.IsNullOrEmpty(_session.ActiveSaveFileUri))
         {
             try
             {
-                var data = _session.ActiveSave.Write().ToArray();
-                await new FileService().WriteBackAsync(data, _session.ActiveSaveFileUri);
+                var isParty  = _isParty;
+                var boxIndex = _boxIndex;
+                var slot     = _slotIndex;
+                var edited   = _pk;
+
+                // 安全写回：若游戏已在软件之后保存过，只把「修改这只」合并到最新存档，
+                // 不会用软件里的旧快照覆盖玩家自己的进度。
+                var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
+                {
+                    if (isParty)
+                        s.SetPartySlotAtIndex(edited, slot);
+                    else
+                        s.SetBoxSlotAtIndex(edited, boxIndex, slot);
+                });
+
+                if (result is SaveWriteResult.StaleUnreadable)
+                    await DisplayAlertAsync("存档已被更新",
+                        "磁盘上的存档比软件里加载的更新且无法解析，本次修改未写入。请回首页重新加载存档后再编辑。",
+                        "OK");
+                else if (result is SaveWriteResult.MergedIntoLatest)
+                    await DisplayAlertAsync("已保存（含并最新进度）",
+                        "检测到游戏里已保存过更新的存档，本次修改已合并进最新存档，游戏进度未被覆盖。",
+                        "OK");
             }
             catch (Exception ex)
             {

@@ -174,7 +174,7 @@
                     <VerticalStackLayout x:Name="DetailInfoPanel" IsVisible="False"
                                          VerticalOptions="Center"
                                          Spacing="8" Padding="8,14,14,14">
-                        <Label Text="INFO" FontFamily="NunitoBold" FontSize="9"
+                        <Label Text="信息" FontFamily="NunitoBold" FontSize="9"
                                TextColor="{DynamicResource ThTextPrimary}" CharacterSpacing="1.2"
                                Margin="0,0,0,2" />
 
@@ -184,7 +184,7 @@
                                 Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
                                 Padding="10,8">
                             <VerticalStackLayout Spacing="1">
-                                <Label Text="ABILITY" FontFamily="NunitoBold" FontSize="8"
+                                <Label Text="特性" FontFamily="NunitoBold" FontSize="8"
                                        TextColor="{DynamicResource ThTextDim}" CharacterSpacing="0.6" />
                                 <Label x:Name="DetailAbility" FontFamily="NunitoBold" FontSize="12"
                                        TextColor="{DynamicResource ThTextPrimary}" />

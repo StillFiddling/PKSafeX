@@ -76,6 +76,9 @@
             <Border x:Name="Row_Folders" StyleId="Navigate"
                     BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
                     StrokeShape="RoundRectangle 6" Padding="12,10">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnFoldersTapped" />
+                </Border.GestureRecognizers>
                 <Grid ColumnDefinitions="*,Auto">
                     <VerticalStackLayout Grid.Column="0" Spacing="4">
                         <Label Text="管理存档文件夹"
@@ -87,6 +90,48 @@
                     <Label Grid.Column="1" Text="›" FontSize="20"
                            TextColor="{DynamicResource ThAccent}"
                            VerticalOptions="Center" Margin="8,0,0,0" />
+                </Grid>
+            </Border>
+
+            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
+
+            <!-- 新增存档：点一次加一个存档文件，有几个模拟器就点几次 -->
+            <Border x:Name="Row_AddSave"
+                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
+                    StrokeShape="RoundRectangle 6" Padding="12,10">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnAddSaveClicked" />
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="*,Auto">
+                    <VerticalStackLayout Grid.Column="0" Spacing="4">
+                        <Label Text="新增存档"
+                               FontAttributes="Bold" FontSize="15"
+                               TextColor="{DynamicResource ThTextPrimary}" />
+                        <Label Text="选一个存档文件加进来。有几个模拟器就点几次，逐个添加。"
+                               FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
+                    </VerticalStackLayout>
+                    <Label Grid.Column="1" Text="＋" FontSize="22"
+                           TextColor="{DynamicResource ThAccent}"
+                           VerticalOptions="Center" Margin="8,0,0,0" />
+                </Grid>
+            </Border>
+
+            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
+
+            <!-- 自动扫描全部模拟器（默认关闭；开启需「所有文件访问权限」）-->
+            <Border x:Name="Row_AutoScan"
+                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
+                    StrokeShape="RoundRectangle 6" Padding="12,10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <VerticalStackLayout Grid.Column="0" Spacing="4">
+                        <Label Text="自动扫描全部模拟器"
+                               FontAttributes="Bold" FontSize="15"
+                               TextColor="{DynamicResource ThTextPrimary}" />
+                        <Label Text="开启后自动去 Android/data 里找存档，需要「所有文件访问权限」。不想授权就关着，用上面的「新增存档」逐个添加。"
+                               FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
+                    </VerticalStackLayout>
+                    <Switch Grid.Column="1" x:Name="AutoScanSwitch"
+                            Toggled="OnAutoScanSwitchToggled" VerticalOptions="Center" />
                 </Grid>
             </Border>
 
@@ -182,7 +227,7 @@
                                    FontAttributes="Bold" FontSize="15"
                                    TextColor="{DynamicResource ThTextPrimary}" />
                             <Label x:Name="SpriteStatusLabel"
-                                   Text="~120 MB · caches HOME sprites for all Pokémon"
+                                   Text="约 120 MB · 缓存全部宝可梦的 HOME 立绘"
                                    FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
                         </VerticalStackLayout>
                         <Grid Grid.Column="1" WidthRequest="52" HeightRequest="52"
@@ -224,7 +269,7 @@
                                    FontAttributes="Bold" FontSize="15"
                                    TextColor="{DynamicResource ThTextPrimary}" />
                             <Label x:Name="AnimSpriteStatusLabel"
-                                   Text="~200 MB · caches animated GIFs for all Pokémon"
+                                   Text="约 200 MB · 缓存全部宝可梦的动态立绘 GIF"
                                    FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
                         </VerticalStackLayout>
                         <Grid Grid.Column="1" WidthRequest="52" HeightRequest="52"
@@ -252,130 +297,43 @@
 
             <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
 
-            <!-- Always show welcome wizard -->
-            <Border x:Name="Row_Welcome" StyleId="Toggle"
-                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
-                    StrokeShape="RoundRectangle 6" Padding="12,10">
-                <Grid ColumnDefinitions="*,Auto">
-                    <VerticalStackLayout Grid.Column="0" Spacing="4">
-                        <Label Text="总是显示初始化向导"
-                               FontAttributes="Bold" FontSize="15"
-                               TextColor="{DynamicResource ThTextPrimary}" />
-                        <Label Text="每次启动都显示初始化向导（用于测试）。"
-                               FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
-                    </VerticalStackLayout>
-                    <Switch Grid.Column="1" x:Name="WelcomeSwitch"
-                            Toggled="OnWelcomeSwitchToggled" VerticalOptions="Center" />
-                </Grid>
-            </Border>
-
-            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
-
-            <!-- Section header -->
-            <Label Text="模拟器存档"
-                   FontSize="10" FontAttributes="Bold"
-                   TextColor="{DynamicResource ThTextDim}" Margin="4,8,0,2" />
-
-            <!-- Eden (Switch Gen 8/9) -->
-            <Border x:Name="Row_EdenScan"
+            <!-- HOME sprite pack import (ZIP) -->
+            <Border x:Name="Row_ImportHome"
                     BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
                     StrokeShape="RoundRectangle 6" Padding="12,10">
                 <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnFindEdenTapped" />
+                    <TapGestureRecognizer Tapped="OnImportHomeSpritesTapped" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout Spacing="4">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <VerticalStackLayout Grid.Column="0" Spacing="2">
-                            <Label Text="查找 Eden 存档（Switch）"
-                                   FontAttributes="Bold" FontSize="15"
-                                   TextColor="{DynamicResource ThTextPrimary}" />
-                            <Label Text="授权访问 eden 文件夹，会自动扫描所有宝可梦存档。"
-                                   FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
-                        </VerticalStackLayout>
-                        <Label Grid.Column="1" Text="›" FontSize="20"
-                               TextColor="{DynamicResource ThAccent}"
-                               VerticalOptions="Center" Margin="8,0,0,0" />
-                    </Grid>
-                    <Label x:Name="EdenStatusLabel" FontSize="11"
-                           TextColor="{DynamicResource ThAccent}" IsVisible="False" />
+                    <Label Text="导入 HOME 立绘精灵包（ZIP）"
+                           FontAttributes="Bold" FontSize="15"
+                           TextColor="{DynamicResource ThTextPrimary}" />
+                    <Label x:Name="ImportHomeStatusLabel"
+                           Text="选择自己下载好的 ZIP 压缩包，解压后按规则写入本地缓存；可重复导入，已存在的图会跳过。"
+                           FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
                 </VerticalStackLayout>
             </Border>
 
             <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
 
-            <!-- MelonDS (DS Gen 4/5) -->
-            <Border x:Name="Row_MelonDSScan"
+            <!-- Animated sprite pack import (ZIP) -->
+            <Border x:Name="Row_ImportAnim"
                     BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
                     StrokeShape="RoundRectangle 6" Padding="12,10">
                 <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnFindMelonDSTapped" />
-                </Border.GestureRecognizers>
-                <Grid ColumnDefinitions="*,Auto">
-                    <VerticalStackLayout Grid.Column="0" Spacing="2">
-                        <Label Text="添加 MelonDS 存档文件夹（DS）"
-                               FontAttributes="Bold" FontSize="15"
-                               TextColor="{DynamicResource ThTextPrimary}" />
-                        <Label Text="存档是与 ROM 同目录的 .sav 文件，请指向 ROM 或存档文件夹。"
-                               FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
-                    </VerticalStackLayout>
-                    <Label Grid.Column="1" Text="›" FontSize="20"
-                           TextColor="{DynamicResource ThAccent}"
-                           VerticalOptions="Center" Margin="8,0,0,0" />
-                </Grid>
-            </Border>
-
-            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
-
-            <!-- Azahar (3DS Gen 6/7) -->
-            <Border x:Name="Row_AzaharScan"
-                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
-                    StrokeShape="RoundRectangle 6" Padding="12,10">
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnFindAzaharTapped" />
+                    <TapGestureRecognizer Tapped="OnImportAnimSpritesTapped" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout Spacing="4">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <VerticalStackLayout Grid.Column="0" Spacing="2">
-                            <Label Text="查找 Azahar 存档（3DS）"
-                                   FontAttributes="Bold" FontSize="15"
-                                   TextColor="{DynamicResource ThTextPrimary}" />
-                            <Label Text="授权访问 Azahar 文件夹，会自动扫描 sdmc/Nintendo 3DS。"
-                                   FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
-                        </VerticalStackLayout>
-                        <Label Grid.Column="1" Text="›" FontSize="20"
-                               TextColor="{DynamicResource ThAccent}"
-                               VerticalOptions="Center" Margin="8,0,0,0" />
-                    </Grid>
-                    <Label x:Name="AzaharStatusLabel" FontSize="11"
-                           TextColor="{DynamicResource ThAccent}" IsVisible="False" />
+                    <Label Text="导入动态立绘精灵包（ZIP）"
+                           FontAttributes="Bold" FontSize="15"
+                           TextColor="{DynamicResource ThTextPrimary}" />
+                    <Label x:Name="ImportAnimStatusLabel"
+                           Text="选择含 ani / ani-shiny 目录的 GIF 压缩包；导入后动态立绘无需再联网。"
+                           FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
                 </VerticalStackLayout>
             </Border>
 
-
-            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
-
-            <!-- RetroArch (GBA/GBC Gen 1–3) -->
-            <Border x:Name="Row_RetroArchScan"
-                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
-                    StrokeShape="RoundRectangle 6" Padding="12,10">
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnFindRetroArchTapped" />
-                </Border.GestureRecognizers>
-                <Grid ColumnDefinitions="*,Auto">
-                    <VerticalStackLayout Grid.Column="0" Spacing="2">
-                        <Label Text="添加 RetroArch 存档文件夹（GBA/GBC）"
-                               FontAttributes="Bold" FontSize="15"
-                               TextColor="{DynamicResource ThTextPrimary}" />
-                        <Label Text="指向 RetroArch 存档文件夹，存档是以 ROM 命名的 .srm 文件。"
-                               FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
-                    </VerticalStackLayout>
-                    <Label Grid.Column="1" Text="›" FontSize="20"
-                           TextColor="{DynamicResource ThAccent}"
-                           VerticalOptions="Center" Margin="8,0,0,0" />
-                </Grid>
-            </Border>
-
-        </VerticalStackLayout>
+            </VerticalStackLayout>
     </ScrollView>
 
 </ContentPage>

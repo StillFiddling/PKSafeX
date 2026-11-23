@@ -1,3 +1,4 @@
+using System.Net;
 using SkiaSharp;
 
 namespace PKHeX.Mobile.Services;
@@ -17,15 +18,19 @@ namespace PKHeX.Mobile.Services;
 /// </summary>
 public static class HomeSpriteCacheService
 {
+    // 之前存 CacheDirectory（系统可随时清理），现改存 AppDataDirectory 以保住用户导入的图
     private static readonly string CacheRoot =
+        Path.Combine(FileSystem.AppDataDirectory, "home_sprites");
+
+    private static readonly string LegacyRoot =
         Path.Combine(FileSystem.CacheDirectory, "home_sprites");
 
-    private const string BaseUrl =
-        "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home";
+    /// <summary>缓存根目录（供 ZIP 导入器写入同一位置）。</summary>
+    public static string CacheRootPath => CacheRoot;
 
     private static readonly HttpClient Http = new()
     {
-        Timeout = TimeSpan.FromSeconds(15),
+        Timeout = TimeSpan.FromSeconds(8),
     };
 
     // Decoded bitmaps kept in memory so GetCached() is zero-allocation on hot path
@@ -141,7 +146,71 @@ public static class HomeSpriteCacheService
     public static string GetHomeUrl(ushort species, byte form, bool shiny)
     {
         var slug = GetHomeSlug(species, form);
-        return shiny ? $"{BaseUrl}/shiny/{slug}.png" : $"{BaseUrl}/{slug}.png";
+        return SpriteSourceConfig.ForHome(slug, shiny)[0];
+    }
+
+    // ── 旧缓存迁移 ────────────────────────────────────────────────────────────
+
+    private static Task? _migration;
+
+    /// <summary>
+    /// 把旧版存在 CacheDirectory 的 HOME 图迁到 AppDataDirectory（只做一次）。
+    /// 迁移失败不影响使用：旧目录仍能被读取逻辑忽略，重新下载/导入即可。
+    /// </summary>
+    public static Task EnsureMigratedAsync()
+    {
+        _migration ??= Task.Run(MigrateLegacy);
+        return _migration;
+    }
+
+    private static void MigrateLegacy()
+    {
+        try
+        {
+            if (!Directory.Exists(LegacyRoot)) return;
+
+            foreach (var src in Directory.EnumerateFiles(LegacyRoot, "*.png", SearchOption.AllDirectories))
+            {
+                if (new FileInfo(src).Length <= 100) continue;
+                var rel = Path.GetRelativePath(LegacyRoot, src);
+                var dst = Path.Combine(CacheRoot, rel);
+                if (File.Exists(dst)) continue;
+                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+                File.Move(src, dst, overwrite: false);
+            }
+
+            try { Directory.Delete(LegacyRoot, recursive: true); } catch { }
+        }
+        catch { /* 迁移失败留待下次，或用户重新导入 */ }
+    }
+
+    /// <summary>
+    /// 只读磁盘缓存（不发起网络）：命中则解码进内存。图鉴首帧/离线场景用这个。
+    /// </summary>
+    public static SKBitmap? TryGetFromDisk(ushort species, byte form, bool shiny)
+    {
+        if (species == 0) return null;
+        var slug = GetHomeSlug(species, form);
+        var mkey = MemKey(slug, shiny);
+
+        lock (_lock)
+            if (_mem.TryGetValue(mkey, out var hit)) return hit;
+
+        var disk = DiskPath(slug, shiny);
+        try
+        {
+            if (File.Exists(disk) && new FileInfo(disk).Length > 100)
+            {
+                var bmp = SKBitmap.Decode(disk);
+                if (bmp is not null)
+                {
+                    lock (_lock) _mem[mkey] = bmp;
+                    return bmp;
+                }
+            }
+        }
+        catch { }
+        return null;
     }
 
     // ── Bulk download state ───────────────────────────────────────────────────
@@ -160,6 +229,30 @@ public static class HomeSpriteCacheService
     private const int MaxSpecies  = 1025;
     private const int Concurrency = 5;
 
+    private static CancellationTokenSource? _bulkCts;
+
+    /// <summary>用户点"停止"或离开页面时中止批量下载。</summary>
+    public static void StopBulk()
+    {
+        try { _bulkCts?.Cancel(); } catch { }
+    }
+
+    /// <summary>缓存已占磁盘容量（MB）。</summary>
+    public static double CacheSizeMb()
+    {
+        try
+        {
+            if (!Directory.Exists(CacheRoot)) return 0;
+            long total = 0;
+            foreach (var f in Directory.EnumerateFiles(CacheRoot, "*.png", SearchOption.AllDirectories))
+            {
+                try { total += new FileInfo(f).Length; } catch { }
+            }
+            return total / 1024.0 / 1024.0;
+        }
+        catch { return 0; }
+    }
+
     /// <summary>
     /// Downloads all regular + shiny HOME sprites that aren't already on disk,
     /// including known form variants, using a sliding window of 5 concurrent requests.
@@ -168,6 +261,10 @@ public static class HomeSpriteCacheService
     public static async Task BulkDownloadAsync(CancellationToken ct = default)
     {
         if (IsBulkDownloading) return;
+
+        await EnsureMigratedAsync().ConfigureAwait(false);
+        _bulkCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        ct = _bulkCts.Token;
 
         // Build queue: base forms for all species + all known form variants
         var queue = new List<(string Slug, bool Shiny)>(MaxSpecies * 2 + FormSlugs.Count * 2);
@@ -205,8 +302,7 @@ public static class HomeSpriteCacheService
                     if (bytes is not null)
                     {
                         var disk = DiskPath(item.Slug, item.Shiny);
-                        Directory.CreateDirectory(Path.GetDirectoryName(disk)!);
-                        await File.WriteAllBytesAsync(disk, bytes, ct).ConfigureAwait(false);
+                        await SaveBytesAsync(disk, bytes, ct).ConfigureAwait(false);
                         ok = true;
                     }
                     else
@@ -300,8 +396,7 @@ public static class HomeSpriteCacheService
             var bytes = await DownloadAsync(slug, shiny).ConfigureAwait(false);
             if (bytes is null) return null;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(disk)!);
-            await File.WriteAllBytesAsync(disk, bytes).ConfigureAwait(false);
+            await SaveBytesAsync(disk, bytes).ConfigureAwait(false);
 
             using var ms = new MemoryStream(bytes);
             var decoded = SKBitmap.Decode(ms);
@@ -331,17 +426,45 @@ public static class HomeSpriteCacheService
 
     private static async Task<byte[]?> DownloadAsync(string slug, bool shiny)
     {
-        var url = shiny
-            ? $"{BaseUrl}/shiny/{slug}.png"
-            : $"{BaseUrl}/{slug}.png";
+        // 多源逐个尝试：主源 → gh-proxy 镜像 → jsDelivr，每源最多 2 次
+        foreach (var url in SpriteSourceConfig.ForHome(slug, shiny))
+        {
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                try
+                {
+                    var bytes = await Http.GetByteArrayAsync(url).ConfigureAwait(false);
+                    if (bytes.Length > 100) return bytes;
+                    break; // 内容无效，换下一个源
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound)
+                {
+                    break; // 该源没有这只，换下一个源
+                }
+                catch
+                {
+                    if (attempt == 0)
+                        await Task.Delay(400).ConfigureAwait(false);
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>写入缓存：先写 .part 再改名，避免半截文件被当成有效缓存。</summary>
+    internal static async Task SaveBytesAsync(string path, byte[] bytes, CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var tmp = path + ".part";
         try
         {
-            var bytes = await Http.GetByteArrayAsync(url).ConfigureAwait(false);
-            return bytes.Length > 100 ? bytes : null;
+            await File.WriteAllBytesAsync(tmp, bytes, ct).ConfigureAwait(false);
+            File.Move(tmp, path, overwrite: true);
         }
         catch
         {
-            return null;
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw;
         }
     }
 

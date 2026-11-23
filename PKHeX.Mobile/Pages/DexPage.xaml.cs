@@ -30,9 +30,9 @@ public partial class DexPage : ContentPage
 
     private static readonly string[] _typeNames =
     [
-        "Normal","Fighting","Flying","Poison","Ground","Rock",
-        "Bug","Ghost","Steel","Fire","Water","Grass",
-        "Electric","Psychic","Ice","Dragon","Dark","Fairy","Stellar","???",
+        "一般","格斗","飞行","毒","地面","岩石",
+        "虫","幽灵","钢","火","水","草",
+        "电","超能力","冰","龙","恶","妖精","星晶","???",
     ];
 
     private static readonly Color[] _typePillColors =
@@ -113,6 +113,7 @@ public partial class DexPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        try { _dexCts?.Cancel(); } catch { }
 #if ANDROID
         GamepadRouter.KeyReceived -= OnGamepadKey;
 #endif
@@ -125,15 +126,45 @@ public partial class DexPage : ContentPage
 
     // ── Sprite preload (background, progressive) ───────────────────────────────
 
+    private CancellationTokenSource? _dexCts;
+
+    /// <summary>
+    /// 两段式预加载：先只读本地（磁盘 HOME + 内置图）立刻能画出来，
+    /// 再在后台慢慢补网络图；离开页面立即取消，不再出现"进图鉴卡住/打不开"。
+    /// </summary>
     private async Task PreloadSpritesAsync()
     {
-        for (int start = 0; start < TotalSpecies; start += 30)
+        _dexCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _dexCts = cts;
+        var ct = cts.Token;
+
+        try
         {
-            int count = Math.Min(30, TotalSpecies - start);
-            var batch = _speciesPks[start..(start + count)].Cast<PKM>().ToArray();
-            await _renderer.PreloadBoxAsync(batch);
-            DexCanvas.InvalidateSurface();
+            // 第一段：离线，纯本地
+            for (int start = 0; start < TotalSpecies; start += 30)
+            {
+                if (ct.IsCancellationRequested) return;
+                int count = Math.Min(30, TotalSpecies - start);
+                var batch = _speciesPks[start..(start + count)].Cast<PKM>().ToArray();
+                await _renderer.PreloadLocalAsync(batch, ct);
+                DexCanvas.InvalidateSurface();
+            }
+
+            // 第二段：后台补网（失败无所谓，本地图已经显示了）
+            for (int start = 0; start < TotalSpecies; start += 30)
+            {
+                if (ct.IsCancellationRequested) return;
+                int count = Math.Min(30, TotalSpecies - start);
+                var batch = _speciesPks[start..(start + count)].Cast<PKM>().ToArray();
+                try { await _renderer.PreloadBoxAsync(batch); } catch { }
+                if (ct.IsCancellationRequested) return;
+                DexCanvas.InvalidateSurface();
+                await Task.Delay(120, ct);
+            }
         }
+        catch (OperationCanceledException) { /* 离开页面，正常结束 */ }
+        catch { /* 预加载失败不影响浏览 */ }
     }
 
     // ── Canvas painting ────────────────────────────────────────────────────────
@@ -207,7 +238,7 @@ public partial class DexPage : ContentPage
 
         // Sprite / silhouette
         var sprite = _renderer.GetSprite(_speciesPks[species - 1]);
-        if (sprite.Width > 0 && sprite.Height > 0)
+        if (sprite.Width > 0 && sprite.Height > 0 && !_renderer.IsBlank(sprite))
         {
             float inner  = spriteAreaH * 0.82f;
             float aspect = (float)sprite.Width / sprite.Height;
@@ -229,6 +260,21 @@ public partial class DexPage : ContentPage
                 };
                 canvas.DrawBitmap(sprite, destRect, silPaint);
             }
+        }
+        else
+        {
+            // 缺图：画一个淡色问号，避免"整格空白"看起来像 app 坏了
+            float qSize = spriteAreaH * 0.42f;
+            using var qFont  = new SKFont(SKTypeface.Default, qSize);
+            using var qPaint = new SKPaint
+            {
+                Color = unlocked
+                    ? new SKColor(200, 200, 200, 150)
+                    : new SKColor(140, 140, 140, 90),
+                IsAntialias = true,
+            };
+            canvas.DrawText("?", rect.MidX, rect.Top + spriteAreaH * 0.62f,
+                            SKTextAlign.Center, qFont, qPaint);
         }
 
         // Dex number — centred in the bottom strip
@@ -349,8 +395,8 @@ public partial class DexPage : ContentPage
         DexCanvas.InvalidateSurface();
 
         string msg = newly > 0
-            ? $"{newly} new Pokémon unlocked!"
-            : "No new Pokémon found in this save.";
+            ? $"新解锁 {newly} 只宝可梦。"
+            : "这个存档里没有新的宝可梦。";
         _ = DisplayAlertAsync("扫描完成", msg, "OK");
     }
 

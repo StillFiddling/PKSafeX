@@ -16,6 +16,9 @@ public static class SpriteCacheService
     private static readonly string CacheRoot =
         Path.Combine(FileSystem.AppDataDirectory, "sprites");
 
+    /// <summary>缓存根目录（供 ZIP 导入器写入同一位置）。</summary>
+    public static string CacheRootPath => CacheRoot;
+
     private const string BaseUrl = "https://play.pokemonshowdown.com/sprites";
 
     private static readonly HttpClient Http = new(new HttpClientHandler
@@ -51,6 +54,47 @@ public static class SpriteCacheService
     private const int MaxSpecies  = 1025;
     private const int Concurrency = 5;
 
+    private static CancellationTokenSource? _bulkCts;
+
+    /// <summary>中止批量下载。</summary>
+    public static void StopBulk()
+    {
+        try { _bulkCts?.Cancel(); } catch { }
+    }
+
+    /// <summary>缓存已占磁盘容量（MB）。</summary>
+    public static double CacheSizeMb()
+    {
+        try
+        {
+            if (!Directory.Exists(CacheRoot)) return 0;
+            long total = 0;
+            foreach (var f in Directory.EnumerateFiles(CacheRoot, "*.gif", SearchOption.AllDirectories))
+            {
+                try { total += new FileInfo(f).Length; } catch { }
+            }
+            return total / 1024.0 / 1024.0;
+        }
+        catch { return 0; }
+    }
+
+    /// <summary>写入缓存：先写 .part 再改名，避免半截文件被当成有效缓存。</summary>
+    private static async Task SaveBytesAsync(string path, byte[] bytes, CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var tmp = path + ".part";
+        try
+        {
+            await File.WriteAllBytesAsync(tmp, bytes, ct).ConfigureAwait(false);
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw;
+        }
+    }
+
     /// <summary>
     /// Downloads all animated sprites that aren't already cached on disk,
     /// enumerating species 1–<see cref="MaxSpecies"/> plus all known form variants.
@@ -59,6 +103,9 @@ public static class SpriteCacheService
     public static async Task BulkDownloadAllAsync(CancellationToken ct = default)
     {
         if (IsBulkDownloading) return;
+
+        _bulkCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        ct = _bulkCts.Token;
 
         var queue = BuildSlugQueue();
 
@@ -84,8 +131,7 @@ public static class SpriteCacheService
                     if (bytes is not null)
                     {
                         var path = CachePath(item.Slug, item.Shiny);
-                        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                        await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
+                        await SaveBytesAsync(path, bytes, ct).ConfigureAwait(false);
                         ok = true;
                     }
                     else
@@ -197,8 +243,7 @@ public static class SpriteCacheService
             var bytes = await DownloadAsync(slug, shiny).ConfigureAwait(false);
             if (bytes is null) return null;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
-            await File.WriteAllBytesAsync(cachePath, bytes).ConfigureAwait(false);
+            await SaveBytesAsync(cachePath, bytes).ConfigureAwait(false);
             return ToDataUri(bytes);
         }
         finally
@@ -263,33 +308,35 @@ public static class SpriteCacheService
 
     private static async Task<byte[]?> DownloadAsync(string slug, bool shiny)
     {
-        var folder     = shiny ? "ani-shiny"     : "ani";
-        var gen5Folder = shiny ? "gen5ani-shiny" : "gen5ani";
-
-        string[] urls =
-        [
-            $"{BaseUrl}/{folder}/{slug}.gif",
-            $"{BaseUrl}/{gen5Folder}/{slug}.gif",
-        ];
-
-        foreach (var url in urls)
+        // 多源逐个尝试：ani → gen5ani → 各自 gh-proxy 镜像，每源最多 2 次
+        foreach (var url in SpriteSourceConfig.ForAnim(slug, shiny))
         {
-            try
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                var bytes = await Http.GetByteArrayAsync(url);
-                if (bytes.Length > 50) return bytes;
+                try
+                {
+                    var bytes = await Http.GetByteArrayAsync(url).ConfigureAwait(false);
+                    if (bytes.Length > 50) return bytes;
+                    break; // 内容无效，换下一个源
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.NotFound)
+                {
+                    break; // 404 = 该源确实没有这只，换下一个源
+                }
+                catch (HttpRequestException)
+                {
+                    if (attempt == 0) await Task.Delay(400).ConfigureAwait(false);
+                }
+                catch (TaskCanceledException)
+                {
+                    if (attempt == 0) await Task.Delay(400).ConfigureAwait(false);
+                    else return null; // 超时两次，先放弃这次请求，别把整个 CDN 判死
+                }
+                catch { }
             }
-            catch (HttpRequestException ex)
-            {
-                // 404 = sprite legitimately missing from CDN (e.g. form variant). Don't backoff.
-                // Any other status (0 = no connection, 5xx = server error) = mark CDN unreachable.
-                if (ex.StatusCode is not System.Net.HttpStatusCode.NotFound)
-                    _cdnUnavailable = true;
-                return null;
-            }
-            catch (TaskCanceledException) { _cdnUnavailable = true; return null; } // timeout
-            catch { }
         }
+
+        _cdnUnavailable = true; // 所有源都失败，本会话内停止重试
         return null;
     }
 

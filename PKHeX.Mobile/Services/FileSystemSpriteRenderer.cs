@@ -22,20 +22,38 @@ public sealed class FileSystemSpriteRenderer : PKHeX.Drawing.Mobile.Sprites.ISpr
     /// Call this before InvalidateSurface.
     /// </summary>
     public async Task PreloadBoxAsync(PKM[] box)
+        => await PreloadAsync(box, allowNetwork: true, CancellationToken.None).ConfigureAwait(false);
+
+    /// <summary>
+    /// 离线优先预加载：只读磁盘已有 HOME 图 + APK 内置图，绝不发起网络请求。
+    /// 图鉴/首页首帧用这个，避免在境外源不可达时进页面卡住。
+    /// </summary>
+    public Task PreloadLocalAsync(PKM[] box, CancellationToken ct = default)
+        => PreloadAsync(box, allowNetwork: false, ct);
+
+    /// <summary>是否为空白占位图（用于画"缺图"提示）。</summary>
+    public bool IsBlank(SKBitmap bmp) => _empty is not null && ReferenceEquals(bmp, _empty);
+
+    private async Task PreloadAsync(PKM[] box, bool allowNetwork, CancellationToken ct)
     {
-        // Kick off all HOME sprite downloads in parallel (network or disk cache)
-        var homeSlots = box
-            .Where(pk => pk.Species != 0)
-            .Select(pk => ((ushort)pk.Species, pk.Form, pk.IsShiny));
-        await HomeSpriteCacheService.PreloadAsync(homeSlots).ConfigureAwait(false);
+        // 有网模式下先并行取 HOME（网络或磁盘），离线模式只读磁盘
+        if (allowNetwork)
+        {
+            var homeSlots = box
+                .Where(pk => pk.Species != 0)
+                .Select(pk => ((ushort)pk.Species, pk.Form, pk.IsShiny));
+            await HomeSpriteCacheService.PreloadAsync(homeSlots).ConfigureAwait(false);
+        }
 
         // Fall back: load bundled sprites for anything HOME couldn't provide
         foreach (var pk in box)
         {
+            ct.ThrowIfCancellationRequested();
             if (pk.Species == 0)
                 continue;
-            // Skip bundled load if HOME already has this one
-            if (HomeSpriteCacheService.GetCached((ushort)pk.Species, pk.Form, pk.IsShiny) is not null)
+
+            // Skip bundled load if HOME already has this one (磁盘缓存即可，不联网)
+            if (HomeSpriteCacheService.TryGetFromDisk((ushort)pk.Species, pk.Form, pk.IsShiny) is not null)
                 continue;
 
             var key = BuildKey(pk);
@@ -71,6 +89,10 @@ public sealed class FileSystemSpriteRenderer : PKHeX.Drawing.Mobile.Sprites.ISpr
 
     public SKBitmap GetSprite(ushort species, byte form, byte gender, uint formArg, bool shiny, EntityContext context)
     {
+        // 图鉴等只给物种信息的调用：先看磁盘 HOME（同步、不联网）
+        var home = HomeSpriteCacheService.TryGetFromDisk(species, form, shiny);
+        if (home is not null) return home;
+
         var key = "b" + SpriteName.GetResourceStringSprite(species, form, gender, formArg, context, shiny);
         return _cache.GetValueOrDefault(key) ?? GetEmptySprite();
     }

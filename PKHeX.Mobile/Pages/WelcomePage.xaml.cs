@@ -141,9 +141,7 @@ public partial class WelcomePage : ContentPage
     private static bool _shownThisSession;
 
     public static bool ShouldShowWelcome()
-        => !_shownThisSession && (
-            !Preferences.Default.Get("onboarding_complete", false)
-            || Preferences.Default.Get(SettingsPage.KeyAlwaysShowWelcome, false));
+        => false; // 初始化向导已取消：首次安装也直接进首页
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Construction
@@ -826,7 +824,7 @@ public partial class WelcomePage : ContentPage
 
         // Restore dual-screen header wording when on the Thor
         if (step == 1 && _isDualScreen)
-            SaveScanHeaderLabel.Text = "Tap an emulator on the bottom screen to scan";
+            SaveScanHeaderLabel.Text = "点按底部选择模拟器进行扫描";
 
         if (step == 2)
         {

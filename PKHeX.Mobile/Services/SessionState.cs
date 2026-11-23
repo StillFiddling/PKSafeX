@@ -20,6 +20,15 @@ public class SessionState
     /// <summary>SAF content URI of the loaded save, used for write-back.</summary>
     public string ActiveSaveFileUri { get; set; } = "";
 
+    /// <summary>
+    /// 加载（或上次写回）时磁盘存档内容的 SHA-256 指纹。
+    /// 写回前用它判断文件是否已被游戏/其它程序更新，避免覆盖玩家进度。
+    /// </summary>
+    public string ActiveSaveFingerprint { get; set; } = "";
+
+    /// <summary>已经提示过"存档被外部更新"的那个指纹，避免重复弹窗。</summary>
+    public string PromptedStaleFingerprint { get; set; } = "";
+
     // ── Cross-page Pokémon move (box ↔ bank) ──────────────────────────────────
 
     /// <summary>PKM currently being carried across a bank/box swap.</summary>
@@ -39,4 +48,37 @@ public class SessionState
 
     /// <summary>Set to true by SettingsPage/WelcomePage when watched directories change so MainPage re-scans on next appearance.</summary>
     public bool RescanNeeded { get; set; } = true;
+
+    // ── 待增量加入的路径（管理页/设置页写入，首页消费）──────────────────────
+
+    private static readonly List<(string Uri, bool IsFile)> _pendingAdds = [];
+
+    /// <summary>由管理页等拿不到 SessionState 实例的页面置位，首页取用后清空。</summary>
+    public static bool PendingFullRescan { get; set; }
+
+    /// <summary>登记一个需要「只读这一个」的路径，避免为此触发全量重扫。</summary>
+    public static void RequestAdd(string uri, bool isFile)
+    {
+        lock (_pendingAdds)
+        {
+            if (!_pendingAdds.Any(p => p.Uri == uri && p.IsFile == isFile))
+                _pendingAdds.Add((uri, isFile));
+        }
+    }
+
+    /// <summary>取出并清空待加入的路径。</summary>
+    public static List<(string Uri, bool IsFile)> TakePendingAdds()
+    {
+        lock (_pendingAdds)
+        {
+            var copy = _pendingAdds.ToList();
+            _pendingAdds.Clear();
+            return copy;
+        }
+    }
+
+    public static int PendingAddCount
+    {
+        get { lock (_pendingAdds) return _pendingAdds.Count; }
+    }
 }

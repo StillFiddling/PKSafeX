@@ -15,7 +15,7 @@ public partial class BankViewPage : ContentPage
 
     private readonly ISecondaryDisplay        _secondary;
     private readonly SessionState             _session;
-    private readonly BankService              _bank    = new();
+    private readonly BankService              _bank    = BankService.Instance;
     private readonly FileSystemSpriteRenderer _sprites = new();
     private readonly GameStrings              _strings = GameLang.Strings;
 
@@ -216,14 +216,14 @@ public partial class BankViewPage : ContentPage
             if (slot?.DepositedAt is { Length: > 0 } ts &&
                 DateTime.TryParse(ts, null,
                     System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
-                DepositLabel.Text = $"Deposited {dt.ToLocalTime():MMM d, yyyy}";
+                DepositLabel.Text = $"存入于 {dt.ToLocalTime():yyyy年M月d日}";
             else
                 DepositLabel.Text = "";
         }
         else
         {
             SpeciesNum.Text  = "";
-            SpeciesName.Text = "Empty";
+            SpeciesName.Text = "空位";
             LevelLabel.Text  = "";
             ShinyLabel.IsVisible = false;
             OTLabel.Text     = "";
@@ -674,7 +674,7 @@ public partial class BankViewPage : ContentPage
                 case "remove":
                     if (_bank.Boxes.Count <= 1)
                     {
-                        await DisplayAlertAsync("Cannot Remove", "至少要保留一个箱子。", "OK");
+                        await DisplayAlertAsync("无法移除", "至少要保留一个箱子。", "OK");
                         break;
                     }
                     if (!_bank.IsBoxEmpty(_boxIndex))
@@ -753,7 +753,7 @@ public partial class BankViewPage : ContentPage
     private void ShowGenSelector()
     {
         _pickerState = PickerState.Generation;
-        PickerTitle.Text = "Choose Generation";
+        PickerTitle.Text = "选择世代";
         PickerBackBtn.IsVisible = false;
         SpeciesScroll.IsVisible = false;
         GenSelectorGrid.IsVisible = true;
@@ -987,10 +987,11 @@ public partial class BankViewPage : ContentPage
     {
         var name = _previewPk?.Species > 0 && _previewPk.Species < _strings.specieslist.Length
             ? _strings.specieslist[_previewPk.Species]
-            : "this Pokémon";
-        bool ok = await DisplayAlertAsync("从银行移除", $"Remove {name} from the bank?", "Remove", "Cancel");
+            : "这只宝可梦";
+        bool ok = await DisplayAlertAsync("从银行移除", $"确认把{name}从银行移除？", "移除", "取消");
         if (!ok) return;
         _bank.ClearSlot(_boxIndex, _cursorSlot);
+        await _bank.SaveAsync();
         await LoadBoxAsync(_boxIndex, resetCursor: false);
     }
 
