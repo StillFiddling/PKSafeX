@@ -96,12 +96,16 @@
                 </Border>
             </Grid>
 
-            <!-- ── Mode banner ── -->
-            <Border Grid.Row="2" x:Name="ModeBanner"
-                    BackgroundColor="#0D1A0D" Stroke="Transparent"
-                    Padding="10,6" IsVisible="False">
+            <!-- ── Mode banner：不占行，叠在顶部占位里（与全应用提示条同一套卡片样式） ── -->
+            <Border Grid.Row="3" x:Name="ModeBanner"
+                    StrokeShape="RoundRectangle 10" StrokeThickness="1"
+                    BackgroundColor="{DynamicResource ThHintBg}"
+                    Stroke="{DynamicResource ThHintStroke}"
+                    Padding="10,4" Margin="12,0,12,6"
+                    HorizontalOptions="Fill" VerticalOptions="Center" IsVisible="False">
                 <Label x:Name="ModeLabel"
-                       TextColor="#44CC66" FontSize="13" FontAttributes="Bold"
+                       FontFamily="NunitoBold" FontSize="12"
+                       TextColor="#34D990"
                        HorizontalOptions="Center" MaxLines="2" LineBreakMode="TailTruncation" />
             </Border>
 

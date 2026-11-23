@@ -679,8 +679,7 @@ public partial class BankPage : ContentPage
             var name = _session.PendingMove.Species < _strings.specieslist.Length
                 ? _strings.specieslist[_session.PendingMove.Species] : "?";
             ModeLabel.Text      = $"存入中：{name}  Lv.{_session.PendingMove.CurrentLevel}  - 按 A 放入";
-            ModeLabel.TextColor = Color.FromArgb("#44DDAA");
-            ModeBanner.BackgroundColor = Color.FromArgb("#0A1E0E");
+            ModeLabel.TextColor = HintPalette.AccentConfirm;
             ModeBanner.IsVisible = true;
         }
         else if (_moveMode && _movePk != null)
@@ -688,8 +687,7 @@ public partial class BankPage : ContentPage
             var name = _movePk.Species < _strings.specieslist.Length
                 ? _strings.specieslist[_movePk.Species] : "?";
             ModeLabel.Text      = $"取出中：{name}  Lv.{_movePk.CurrentLevel}  - 用 L1/R1 带到箱子页，B 取消";
-            ModeLabel.TextColor = Color.FromArgb("#DDAA44");
-            ModeBanner.BackgroundColor = Color.FromArgb("#1E1A0A");
+            ModeLabel.TextColor = HintPalette.AccentSave;
             ModeBanner.IsVisible = true;
         }
         else
