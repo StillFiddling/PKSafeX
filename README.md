@@ -3,7 +3,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/StillFiddling/PKSafeX?include_prereleases&label=release)](https://github.com/StillFiddling/PKSafeX/releases)
 
-**PKSafeX 是 [PKSafe](https://github.com/DeffoNotAlex/PKSafe) 的简体中文修改版（非官方 fork）**，
+**PKSafeX 是一款安卓端的宝可梦离线银行，是基于 [PKSafe](https://github.com/DeffoNotAlex/PKSafe) 的简体中文修改版（非官方 fork）**，
 基于 [PKHeX](https://github.com/kwsch/PKHeX) 的存档编辑内核，面向 Android 纯触屏手机做了完整中文化与触摸化改造。
 
 > 本项目与原作者 DeffoNotAlex、kwsch，以及 Nintendo / Game Freak / The Pokémon Company 均无隶属或背书关系。
