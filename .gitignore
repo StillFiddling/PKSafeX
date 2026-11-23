@@ -247,3 +247,7 @@ pingme.txt
 *.p12
 keystore.properties
 *.apk
+
+# 构建所必需的源码（sprites/ 规则会误伤，这里显式放行）
+!PKHeX.Drawing.Mobile/Sprites/
+!PKHeX.Drawing.Mobile/Sprites/**
