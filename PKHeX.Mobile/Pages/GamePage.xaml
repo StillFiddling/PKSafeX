@@ -375,32 +375,6 @@
                 <Label x:Name="PhoneBoxLabel" IsVisible="False" Text="1" />
             </Grid>
 
-            <!-- Tab strip -->
-            <Grid Grid.Row="1" ColumnDefinitions="*,*" Padding="12,8,12,4" ColumnSpacing="8">
-                <Border x:Name="BoxesTab" Grid.Column="0"
-                        StrokeShape="RoundRectangle 8" Padding="0,7"
-                        BackgroundColor="{DynamicResource ThIconBgBlue}"
-                        Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnBoxesTabTapped"/>
-                    </Border.GestureRecognizers>
-                    <Label Text="{x:Static svc:UiText.Box}" FontFamily="NunitoBold" FontSize="12"
-                           TextColor="{DynamicResource ThTextPrimary}"
-                           HorizontalOptions="Center"/>
-                </Border>
-                <Border x:Name="ItemsTab" Grid.Column="1"
-                        StrokeShape="RoundRectangle 8" Padding="0,7"
-                        BackgroundColor="{DynamicResource ThCardBg}"
-                        Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnItemsTabTapped"/>
-                    </Border.GestureRecognizers>
-                    <Label Text="{x:Static svc:UiText.Items}" FontFamily="NunitoBold" FontSize="12"
-                           TextColor="{DynamicResource ThTextSecondary}"
-                           HorizontalOptions="Center"/>
-                </Border>
-            </Grid>
-
             <!-- Box navigation header -->
             <Grid x:Name="BoxNavRow" Grid.Row="2" ColumnDefinitions="Auto,*,Auto"
                   Padding="16,12,16,8">
@@ -541,6 +515,23 @@
                         </Border>
                     </HorizontalStackLayout>
                     <HorizontalStackLayout Spacing="4">
+                        <Border StrokeShape="RoundRectangle 5"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                                Padding="8,4">
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
+                                        StrokeThickness="0" Padding="5,2">
+                                    <Label Text="R" FontFamily="NunitoExtraBold" FontSize="9"
+                                           TextColor="#60C0FF"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="{x:Static svc:UiText.HintCry}" FontFamily="Nunito" FontSize="11"
+                                       TextColor="#C8D2E8" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="4">
                         <HorizontalStackLayout.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnSaveHintTapped" />
                         </HorizontalStackLayout.GestureRecognizers>
@@ -555,24 +546,7 @@
                                            TextColor="#F0C040"
                                            HorizontalOptions="Center" VerticalOptions="Center" />
                                 </Border>
-                                <Label Text="{x:Static svc:UiText.HintSave}" FontFamily="Nunito" FontSize="11"
-                                       TextColor="#C8D2E8" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-                        </Border>
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout Spacing="4">
-                        <Border StrokeShape="RoundRectangle 5"
-                                BackgroundColor="{DynamicResource ThHintBg}"
-                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
-                                Padding="8,4">
-                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
-                                <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
-                                        StrokeThickness="0" Padding="5,2">
-                                    <Label Text="R" FontFamily="NunitoExtraBold" FontSize="9"
-                                           TextColor="#60C0FF"
-                                           HorizontalOptions="Center" VerticalOptions="Center" />
-                                </Border>
-                                <Label Text="{x:Static svc:UiText.HintCry}" FontFamily="Nunito" FontSize="11"
+                                <Label Text="{x:Static svc:UiText.HintEdit}" FontFamily="Nunito" FontSize="11"
                                        TextColor="#C8D2E8" VerticalOptions="Center" />
                             </HorizontalStackLayout>
                         </Border>
@@ -763,29 +737,10 @@
                 <VerticalStackLayout Spacing="0">
 
                     <!-- Menu title -->
-                    <Label Text="保存 / 导出 / 道具"
+                    <Label Text="导出 / 道具"
                            TextColor="{DynamicResource ThActionMenuTitle}" FontSize="11"
                            HorizontalOptions="Center"
                            Margin="0,10,0,8" />
-
-                    <!-- Save option -->
-                    <Border x:Name="MenuItem_Save"
-                            BackgroundColor="{DynamicResource ThSettingsRow}"
-                            Stroke="{DynamicResource ThDivider}"
-                            StrokeShape="RoundRectangle 8" Padding="16,12"
-                            Margin="8,0,8,6">
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnSaveClicked" />
-                        </Border.GestureRecognizers>
-                        <HorizontalStackLayout Spacing="12" HorizontalOptions="Center">
-                            <Label Text="{x:Static theme:Ph.FloppyDisk}" FontFamily="Phosphor"
-                                   FontSize="20" TextColor="{DynamicResource ThAccent}"
-                                   VerticalOptions="Center" />
-                            <Label x:Name="SaveMenuLabel" Text="保存到原文件" FontFamily="NunitoBold"
-                                   FontSize="14" TextColor="{DynamicResource ThTextPrimary}"
-                                   VerticalOptions="Center" />
-                        </HorizontalStackLayout>
-                    </Border>
 
                     <!-- Export option -->
                     <Border x:Name="MenuItem_Export"
@@ -800,7 +755,7 @@
                             <Label Text="{x:Static theme:Ph.Export}" FontFamily="Phosphor"
                                    FontSize="20" TextColor="{DynamicResource ThAccent}"
                                    VerticalOptions="Center" />
-                            <Label x:Name="ExportMenuLabel" Text="导出为新文件" FontFamily="NunitoBold"
+                            <Label x:Name="ExportMenuLabel" Text="导出存档" FontFamily="NunitoBold"
                                    FontSize="14" TextColor="{DynamicResource ThTextPrimary}"
                                    VerticalOptions="Center" />
                         </HorizontalStackLayout>
@@ -833,7 +788,7 @@
         <!--  ITEMS PANEL — full-page overlay (both screens)       -->
         <!-- ══════════════════════════════════════════════════════ -->
         <Grid x:Name="ItemsPanel" Grid.Row="0" Grid.RowSpan="2" Grid.ColumnSpan="2" IsVisible="False"
-              RowDefinitions="Auto,Auto,Auto,*"
+              RowDefinitions="Auto,Auto,Auto,*,Auto"
               BackgroundColor="{DynamicResource ThPageBg}">
 
             <!-- Header row -->
@@ -940,6 +895,26 @@
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
+
+            <!-- Footer: save items -->
+            <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Padding="12,6,12,12" ColumnSpacing="8">
+                <Label Grid.Column="0" Text="≡ 保存改动"
+                       FontFamily="Nunito" FontSize="10"
+                       TextColor="{DynamicResource ThTextDim}"
+                       VerticalOptions="Center" />
+                <Border x:Name="ItemsSaveButton" Grid.Column="1"
+                        StrokeShape="RoundRectangle 8" Padding="18,8"
+                        BackgroundColor="{DynamicResource ThIconBgBlue}"
+                        Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnItemsSaveTapped" />
+                    </Border.GestureRecognizers>
+                    <Label x:Name="ItemsSaveLabel" Text="已保存"
+                           FontFamily="NunitoBold" FontSize="13"
+                           TextColor="{DynamicResource ThTextPrimary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+            </Grid>
         </Grid>
 
     </Grid>

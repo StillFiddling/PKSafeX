@@ -20,6 +20,10 @@ public class ItemRow : INotifyPropertyChanged
     public bool IsOwned => _count > 0;
 
     private int _count;
+
+    /// <summary>任意一行的数量被改动时触发，用于给道具页标记「有未保存改动」。</summary>
+    public static event Action? Changed;
+
     public int Count
     {
         get => _count;
@@ -40,6 +44,7 @@ public class ItemRow : INotifyPropertyChanged
                 }
             }
             if (_item != null) _item.Count = clamped;
+            Changed?.Invoke();
             OnPropertyChanged();
             OnPropertyChanged(nameof(CountText));
             if (wasOwned != (_count > 0))

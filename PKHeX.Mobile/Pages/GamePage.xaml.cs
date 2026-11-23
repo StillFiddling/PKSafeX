@@ -39,7 +39,7 @@ public partial class GamePage : ContentPage
 
     // Action menu (Start button)
     private bool _menuOpen;
-    private int  _menuCursor; // 0 = Save, 1 = Export, 2 = Items
+    private int  _menuCursor; // 0 = Export, 1 = Items
 
     // Move mode
     private bool _moveMode;
@@ -170,6 +170,8 @@ public partial class GamePage : ContentPage
         GamepadRouter.BoxScrollRequested -= OnBoxScroll;
         GamepadRouter.BoxScrollRequested += OnBoxScroll;
 #endif
+        ItemRow.Changed -= OnItemChanged;
+        ItemRow.Changed += OnItemChanged;
         var sav = _session.ActiveSave;
         if (sav is null) return;
 
@@ -272,6 +274,7 @@ public partial class GamePage : ContentPage
     {
         base.OnDisappearing();
         CommitItems();
+        ItemRow.Changed -= OnItemChanged;
         // Instantly reset sheet so it's off-screen when returning
         if (_isPhone)
         {
@@ -1390,11 +1393,10 @@ public partial class GamePage : ContentPage
                     _menuCursor = Math.Max(0, _menuCursor - 1); UpdateMenuHighlight(); break;
                 case Android.Views.Keycode.DpadDown:
                 case Android.Views.Keycode.DpadRight:
-                    _menuCursor = Math.Min(2, _menuCursor + 1); UpdateMenuHighlight(); break;
+                    _menuCursor = Math.Min(1, _menuCursor + 1); UpdateMenuHighlight(); break;
                 case Android.Views.Keycode.ButtonA:
-                    if      (_menuCursor == 0) OnSaveClicked(this, EventArgs.Empty);
-                    else if (_menuCursor == 1) OnExportClicked(this, EventArgs.Empty);
-                    else                       OnItemsMenuClicked(this, EventArgs.Empty);
+                    if (_menuCursor == 0) OnExportClicked(this, EventArgs.Empty);
+                    else                  OnItemsMenuClicked(this, EventArgs.Empty);
                     CloseActionMenu(); break;
                 case Android.Views.Keycode.ButtonB:
                 case Android.Views.Keycode.ButtonStart:
@@ -1482,7 +1484,7 @@ public partial class GamePage : ContentPage
         ActionMenuPanel.BackgroundColor = ThemeColor("ThActionMenuPanel", "#0D1528");
         ActionMenuPanel.Stroke          = ThemeColor("ThActionMenuStroke", "#2A3F70");
         var textPrimary = ThemeColor("ThTextPrimary", "#EDF0FF");
-        foreach (var label in new[] { SaveMenuLabel, ExportMenuLabel, ItemsMenuLabel })
+        foreach (var label in new[] { ExportMenuLabel, ItemsMenuLabel })
             label.TextColor = textPrimary;
 
         ActionMenuOverlay.Opacity = 0;
@@ -1517,12 +1519,10 @@ public partial class GamePage : ContentPage
         var focusBg   = ThemeColor("ThSettingsRowFocus", "#182845");
         var accent    = ThemeColor("ThAccent",           "#3B8BFF");
 
-        MenuItem_Save.BackgroundColor   = _menuCursor == 0 ? focusBg : normalBg;
-        MenuItem_Export.BackgroundColor = _menuCursor == 1 ? focusBg : normalBg;
-        MenuItem_Items.BackgroundColor  = _menuCursor == 2 ? focusBg : normalBg;
-        MenuItem_Save.Stroke            = _menuCursor == 0 ? accent  : Colors.Transparent;
-        MenuItem_Export.Stroke          = _menuCursor == 1 ? accent  : Colors.Transparent;
-        MenuItem_Items.Stroke           = _menuCursor == 2 ? accent  : Colors.Transparent;
+        MenuItem_Export.BackgroundColor = _menuCursor == 0 ? focusBg : normalBg;
+        MenuItem_Items.BackgroundColor  = _menuCursor == 1 ? focusBg : normalBg;
+        MenuItem_Export.Stroke          = _menuCursor == 0 ? accent  : Colors.Transparent;
+        MenuItem_Items.Stroke           = _menuCursor == 1 ? accent  : Colors.Transparent;
     }
 
     // ──────────────────────────────────────────────
@@ -2034,13 +2034,17 @@ public partial class GamePage : ContentPage
     private async void OnSettingsClicked(object sender, EventArgs e)
         => await Shell.Current.GoToAsync(nameof(SettingsPage));
 
-    private async void OnSaveClicked(object sender, EventArgs e)
+    /// <summary>
+    /// 带冲突保护的整份写回：磁盘存档若已被游戏更新，先让用户选择，绝不在用户不知情时覆盖游戏进度。
+    /// 返回 true 表示确实写入了文件。
+    /// </summary>
+    private async Task<bool> WriteSaveGuardedAsync(bool announce)
     {
-        if (_sav is null) return;
+        if (_sav is null) return false;
         if (string.IsNullOrEmpty(_session.ActiveSaveFileUri))
         {
-            await DisplayAlertAsync("保存失败", "找不到原文件位置，请改用「导出」。", "OK");
-            return;
+            await DisplayAlertAsync("保存失败", "找不到原文件位置，请改用「导出存档」。", "OK");
+            return false;
         }
         try
         {
@@ -2066,15 +2070,19 @@ public partial class GamePage : ContentPage
                     {
                         await DisplayAlertAsync("重新加载失败", "磁盘上的存档无法解析，未做任何写入。", "OK");
                     }
-                    return;
+                    return false;
                 }
 
                 if (choice != "强制覆盖（会丢失游戏进度）")
-                    return;
+                    return false;
             }
 
             await SaveSyncService.ForceWriteAsync(_session);
-            await DisplayAlertAsync("已保存", $"已写回 {_session.ActiveSaveFileName}。", "OK");
+            if (announce)
+                await DisplayAlertAsync("已保存", $"已写回 {_session.ActiveSaveFileName}。", "OK");
+            else
+                Toast("已写回存档文件");
+            return true;
         }
         catch (Exception ex)
         {
@@ -2083,7 +2091,17 @@ public partial class GamePage : ContentPage
                 ? "写入权限被拒绝。请到「设置 → 查找 Azahar / MelonDS / RetroArch 存档」重新授权文件夹后重试。"
                 : ex.Message;
             await DisplayAlertAsync("保存失败", msg, "OK");
+            return false;
         }
+    }
+
+    /// <summary>短暂的轻提示，不打断操作。</summary>
+    private void Toast(string text)
+    {
+#if ANDROID
+        Android.Widget.Toast.MakeText(Android.App.Application.Context, text,
+            Android.Widget.ToastLength.Short)?.Show();
+#endif
     }
 
     /// <summary>进入箱子页时检查磁盘存档是否已被游戏更新，提示一次重新加载。</summary>

@@ -25,6 +25,7 @@ public static class UiText
     public const string HintBack       = "返回";
     public const string HintSave       = "保存";
     public const string HintCry        = "叫声";
+    public const string HintEdit       = "编辑";
     public const string HintSearch     = "搜索";
 
     // ── 箱子页 ──
