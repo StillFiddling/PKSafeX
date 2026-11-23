@@ -39,6 +39,64 @@ public partial class BankPage : ContentPage
         _secondary = secondary;
         _session   = session;
         InitializeComponent();
+        // 让箱子网格与「箱子页」落在同一垂直区间：用箱子页实测的画布顶边比例来算占位高度，
+        // 不再用「半屏 + 常量」估算（那样在不同屏高上会差几十 dp）。
+        SizeChanged += (_, _) => UpdateBoxSpacer();
+        LayoutChanged += (_, _) => UpdateBoxSpacer();
+    }
+
+    /// <summary>
+    /// 把银行页的画布摆到与箱子页画布完全相同的垂直区间：
+    /// 高度取箱子页画布高度，顶边用「实测顶边 vs 目标顶边」的差值自校正，
+    /// 不依赖页头/导航行的测量值（那两行在首次布局时还读不到高度）。
+    /// </summary>
+    private void UpdateBoxSpacer()
+    {
+        if (Height <= 0) return;
+
+        if (GamePage.BoxGridTopRatio <= 0 || GamePage.BoxGridBottomRatio <= GamePage.BoxGridTopRatio)
+        {
+            // 箱子页还没量过（正常从箱子页进来不会发生），按半屏兜底
+            BoxTopSpacer.HeightRequest = Math.Max(0, Height / 2 + 50);
+            return;
+        }
+
+        double targetTop = Height * GamePage.BoxGridTopRatio;
+        double canvasH   = Height * (GamePage.BoxGridBottomRatio - GamePage.BoxGridTopRatio);
+
+        if (Math.Abs(BankCanvas.HeightRequest - canvasH) > 0.5)
+        {
+            BankCanvas.HeightRequest   = canvasH;
+            BankCanvas.VerticalOptions = LayoutOptions.Start;
+        }
+
+        double cur = BoxTopSpacer.HeightRequest;
+        if (cur < 0) cur = 0;
+
+        double actualTop = CanvasTopDp();
+        if (actualTop <= 0)
+        {
+            // 还没完成一次布局：先按目标顶边减去大致页头高度粗放，下一轮会自校正
+            if (cur <= 0) BoxTopSpacer.HeightRequest = Math.Max(0, targetTop - 120);
+            return;
+        }
+
+        double delta = targetTop - actualTop;
+        if (Math.Abs(delta) > 1)
+            BoxTopSpacer.HeightRequest = Math.Max(0, cur + delta);
+    }
+
+    /// <summary>银行画布顶边相对整页的 y（dp）。</summary>
+    private double CanvasTopDp()
+    {
+        double offset = 0;
+        VisualElement? cur = BankCanvas;
+        while (cur is not null && cur is not Page)
+        {
+            offset += cur.Frame.Y;
+            cur     = cur.Parent as VisualElement;
+        }
+        return offset;
     }
 
     // ──────────────────────────────────────────────
@@ -56,6 +114,7 @@ public partial class BankPage : ContentPage
 #endif
         ThemeService.ThemeChanged -= OnThemeChanged;
         ThemeService.ThemeChanged += OnThemeChanged;
+        BackCoordinator.Bind(HandleBackAction);
         // Slide in the inner grid (not `this`) so hit-testing is always correct
         RootGrid.TranslationX = _session.BankSlideDir < 0 ? -500 : 500;
         await RootGrid.TranslateToAsync(0, 0, 260, Easing.CubicInOut);
@@ -71,6 +130,7 @@ public partial class BankPage : ContentPage
         FillSaveHeader();
         LoadBox(_boxIndex);
         BuildHintBar();
+        Dispatcher.Dispatch(UpdateBoxSpacer);
     }
 
     // 顶部「当前存档」信息（与箱子页同款）
@@ -104,6 +164,30 @@ public partial class BankPage : ContentPage
         GamepadRouter.BoxScrollRequested -= OnBoxScroll;
 #endif
         ThemeService.ThemeChanged -= OnThemeChanged;
+        BackCoordinator.Unbind(HandleBackAction);
+    }
+
+    /// <summary>
+    /// 系统返回 / 手势返回：与 B 一致 —— 详情浮层开着先关掉、移动模式先取消，
+    /// 都没有才回箱子页。
+    /// </summary>
+    private bool HandleBackAction()
+    {
+        if (_detailVisible)
+        {
+            _ = HideDetailAsync();
+            return true;
+        }
+
+        if (_moveMode)
+        {
+            CancelMoveMode();
+            return true;
+        }
+
+        _session.PendingMove = null;
+        _ = SwapToGame();
+        return true;
     }
 
     private void OnThemeChanged() =>
@@ -163,7 +247,8 @@ public partial class BankPage : ContentPage
     private void OnBankPaintSurface(object sender, SKPaintSurfaceEventArgs e)
     {
         var canvas = e.Surface.Canvas;
-        canvas.Clear(ThemeService.CanvasBg);
+        // 与页面背景同色：整页只保留一层底色，画布区域不再出现单独的色带
+        canvas.Clear(ThemeService.PageBg);
         if (_currentSlots.Length == 0) return;
 
         const float gap    = 6f;

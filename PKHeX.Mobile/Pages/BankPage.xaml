@@ -10,12 +10,12 @@
 
     <!-- 外层 Grid：详情浮层是 RootGrid 的兄弟，避免底部被溢出裁掉 -->
     <Grid>
-        <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,*,Auto"
+        <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto"
               BackgroundColor="{DynamicResource ThPageBg}">
 
             <!-- ── Save header（与箱子页顶部完全同款：图标 + 名字 + 游戏名 + 箱子 ▸） ── -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,12,*,Auto"
-                  BackgroundColor="{DynamicResource ThCardBg}" Padding="16,10,10,10">
+            <Grid x:Name="HeaderRow" Grid.Row="0" ColumnDefinitions="Auto,12,*,Auto"
+                  BackgroundColor="Transparent" Padding="14,10,10,6">
                 <Border StrokeShape="RoundRectangle 10"
                         Stroke="#0FFFFFFF" StrokeThickness="1"
                         WidthRequest="58" HeightRequest="58" VerticalOptions="Center">
@@ -58,13 +58,14 @@
             </Grid>
 
             <!-- ── 银行箱子导航 ── -->
-            <Grid Grid.Row="1" ColumnDefinitions="52,*,52" Padding="4,4">
+            <Grid x:Name="NavRow" Grid.Row="1" ColumnDefinitions="52,*,52" Padding="16,12,16,8">
                 <Button Grid.Column="0" x:Name="PrevBankBtn"
                         Text="{x:Static theme:Ph.CaretLeft}"
                         FontFamily="Phosphor"
                         Clicked="OnPrevBox"
-                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        BackgroundColor="{DynamicResource ThCardBg}"
                         TextColor="White"
+                        WidthRequest="40" HeightRequest="36" MinimumHeightRequest="0"
                         FontSize="18" Padding="0" />
                 <VerticalStackLayout Grid.Column="1" HorizontalOptions="Center" Spacing="1">
                     <VerticalStackLayout.GestureRecognizers>
@@ -81,8 +82,9 @@
                         Text="{x:Static theme:Ph.CaretRight}"
                         FontFamily="Phosphor"
                         Clicked="OnNextBox"
-                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        BackgroundColor="{DynamicResource ThCardBg}"
                         TextColor="White"
+                        WidthRequest="40" HeightRequest="36" MinimumHeightRequest="0"
                         FontSize="18" Padding="0" />
             </Grid>
 
@@ -95,8 +97,12 @@
                        HorizontalOptions="Center" MaxLines="2" LineBreakMode="TailTruncation" />
             </Border>
 
+            <!-- ── 顶部占位：把箱子网格压到与箱子页同一垂直区间（高度由代码按屏高等比设定） ── -->
+            <BoxView Grid.Row="3" x:Name="BoxTopSpacer" HeightRequest="0"
+                     Color="Transparent" InputTransparent="True" />
+
             <!-- ── Bank grid ── -->
-            <skia:SKCanvasView Grid.Row="3" x:Name="BankCanvas"
+            <skia:SKCanvasView Grid.Row="4" x:Name="BankCanvas"
                                PaintSurface="OnBankPaintSurface">
                 <skia:SKCanvasView.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnBankTapped" />
@@ -104,8 +110,8 @@
             </skia:SKCanvasView>
 
             <!-- ── Info bar（两行，竖屏不压按键） ── -->
-            <VerticalStackLayout Grid.Row="4" Spacing="4"
-                                 BackgroundColor="{DynamicResource ThCardBg}" Padding="12,6,12,8">
+            <VerticalStackLayout Grid.Row="5" Spacing="6"
+                                 BackgroundColor="Transparent" Padding="16,8,16,12">
                 <Label x:Name="HoverLabel"
                        TextColor="{DynamicResource ThTextSecondary}" FontSize="12"
                        MaxLines="1" LineBreakMode="TailTruncation" />

@@ -132,6 +132,33 @@ public partial class GamePage : ContentPage
             if (PreviewCanvas.Width > 0) _canvasW = PreviewCanvas.Width;
             if (PreviewCanvas.Height > 0) _canvasH = PreviewCanvas.Height;
         };
+
+        // 记录箱子网格顶边在整页中的比例，供银行页把自己的网格摆到同一垂直区间。
+        SizeChanged       += (_, _) => UpdateBoxGridTopRatio();
+        BoxCanvas.SizeChanged += (_, _) => UpdateBoxGridTopRatio();
+    }
+
+    /// <summary>箱子网格画布顶边占整页高度的比例（0~1）；银行页用它对齐网格位置。</summary>
+    public static double BoxGridTopRatio { get; private set; }
+
+    /// <summary>箱子网格画布底边占整页高度的比例（0~1）；银行页把画布高度也对齐到这一区间。</summary>
+    public static double BoxGridBottomRatio { get; private set; }
+
+    private void UpdateBoxGridTopRatio()
+    {
+        if (Height <= 0 || BoxCanvas.Height <= 0) return;
+
+        double offset = 0;
+        VisualElement? cur = BoxCanvas;
+        while (cur is not null && cur is not Page)
+        {
+            offset += cur.Frame.Y;
+            cur     = cur.Parent as VisualElement;
+        }
+
+        if (offset <= 0) return;
+        BoxGridTopRatio    = offset / Height;
+        BoxGridBottomRatio = (offset + BoxCanvas.Height) / Height;
     }
 
     private static Border[] CreateTypeBadgePool() =>
@@ -172,11 +199,7 @@ public partial class GamePage : ContentPage
 #endif
         ItemRow.Changed -= OnItemChanged;
         ItemRow.Changed += OnItemChanged;
-#if ANDROID
-        SystemBackGate.Detach(_backGate);
-        _backGate = SystemBackGate.Attach(HandleSystemBack);
-        if (_backGate != null) _backGate.Enabled = _itemsTabActive;
-#endif
+        BackCoordinator.Bind(HandleBackAction);
         var sav = _session.ActiveSave;
         if (sav is null) return;
 
@@ -286,23 +309,45 @@ public partial class GamePage : ContentPage
         return base.OnBackButtonPressed();
     }
 
-#if ANDROID
-    private SystemBackGate? _backGate;
-
-    /// <summary>手势/预测性返回走 dispatcher，这里统一转给道具页的「是否保存」流程。</summary>
-    private bool HandleSystemBack()
+    /// <summary>
+    /// 系统返回 / 手势返回：与手柄 B 一致 —— 先关菜单/详情浮层，再处理道具页的未保存改动，
+    /// 都无事可做时返回 false，交给全局回调 pop 回存档列表。
+    /// </summary>
+    private bool HandleBackAction()
     {
-        if (!_itemsTabActive) return false;
-        _ = SwitchToBoxesTabAsync();
-        return true;
+        if (_menuOpen)
+        {
+            CloseActionMenu();
+            return true;
+        }
+
+        if (_isPhone && _phoneSheetVisible)
+        {
+            _ = HidePhoneDetailSheetAsync();
+            return true;
+        }
+
+        if (_itemsTabActive)
+        {
+            _ = SwitchToBoxesTabAsync();
+            return true;
+        }
+
+        if (_moveMode)
+        {
+            CancelMoveMode();
+            return true;
+        }
+
+        return false;
     }
-#endif
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
         CommitItems();
         ItemRow.Changed -= OnItemChanged;
+        BackCoordinator.Unbind(HandleBackAction);
         // Instantly reset sheet so it's off-screen when returning
         if (_isPhone)
         {
@@ -313,8 +358,6 @@ public partial class GamePage : ContentPage
             _phoneSheetPk = null;
         }
 #if ANDROID
-        SystemBackGate.Detach(_backGate);
-        _backGate = null;
         GamepadRouter.KeyReceived        -= OnGamepadKey;
         GamepadRouter.BoxScrollRequested -= OnBoxScroll;
         _cryPlayer?.Stop();
@@ -559,7 +602,8 @@ public partial class GamePage : ContentPage
     private void OnBoxPaintSurface(object sender, SKPaintSurfaceEventArgs e)
     {
         var canvas = e.Surface.Canvas;
-        canvas.Clear(ThemeService.CanvasBg);
+        // 与页面背景同色，避免箱子页/银行页的画布各自形成一条色带
+        canvas.Clear(ThemeService.PageBg);
         if (_currentBox.Length == 0) return;
 
         RecalcGridLayout(e.Info.Width, e.Info.Height);

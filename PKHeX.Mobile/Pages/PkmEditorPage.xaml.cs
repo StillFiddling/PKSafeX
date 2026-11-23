@@ -110,8 +110,7 @@ public partial class PkmEditorPage : ContentPage
 
 #if ANDROID
         GamepadRouter.KeyReceived += OnGamepadKey;
-        SystemBackGate.Detach(_backGate);
-        _backGate = SystemBackGate.Attach(HandleSystemBack);
+        BackCoordinator.Bind(HandleBackAction);
 #endif
 
         _secondary.Show();
@@ -136,8 +135,7 @@ public partial class PkmEditorPage : ContentPage
     {
         base.OnDisappearing();
 #if ANDROID
-        SystemBackGate.Detach(_backGate);
-        _backGate = null;
+        BackCoordinator.Unbind(HandleBackAction);
         GamepadRouter.KeyReceived -= OnGamepadKey;
 #endif
         StopDpadRepeat();
@@ -688,10 +686,8 @@ public partial class PkmEditorPage : ContentPage
     private bool _dirtyHooked;
 
 #if ANDROID
-    private SystemBackGate? _backGate;
-
-    /// <summary>手势/预测性返回走 dispatcher，这里转给「是否保存」流程。</summary>
-    private bool HandleSystemBack()
+    /// <summary>系统返回 / 手势返回：与 B 一致 —— 有未保存改动就先问是否保存。</summary>
+    private bool HandleBackAction()
     {
         if (!_dirty) return false;
         _ = ConfirmLeaveAsync();
@@ -719,9 +715,6 @@ public partial class PkmEditorPage : ContentPage
             ? Color.FromArgb("#3B8BFF")
             : Color.FromArgb(light ? "#F4F6FB" : "#0C1120");
         SaveButton.Stroke = Color.FromArgb(_dirty ? "#3B8BFF" : (light ? "#E0E4EC" : "#1AFFFFFF"));
-#if ANDROID
-        if (_backGate != null) _backGate.Enabled = _dirty;
-#endif
     }
 
     /// <summary>给所有输入控件挂「一改就置 dirty」的监听；PopulateControls 期间先关掉。</summary>

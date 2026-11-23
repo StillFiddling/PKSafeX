@@ -25,9 +25,6 @@ public partial class GamePage
         _itemsTabActive      = true;
         _itemsDirty          = false;
         ItemsPanel.IsVisible = true;
-#if ANDROID
-        if (_backGate != null) _backGate.Enabled = true;
-#endif
         UpdateItemsSaveButton();
         BuildPocketTabs();
     }
@@ -48,9 +45,6 @@ public partial class GamePage
         _itemsTabActive      = false;
         _itemEditMode        = false;
         ItemsPanel.IsVisible = false;
-#if ANDROID
-        if (_backGate != null) _backGate.Enabled = false;
-#endif
         return true;
     }
 
