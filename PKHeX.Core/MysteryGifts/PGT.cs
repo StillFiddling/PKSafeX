@@ -164,6 +164,7 @@ public sealed class PGT(Memory<byte> raw) : DataMysteryGift(raw), IRibbonSetEven
             return;
 
         var seed = Util.Rand32();
+        var trXor = (tr.TID16 ^ tr.SID16) >> 3;
         bool filterIVs = criteria.IsSpecifiedIVs(2);
         while (true)
         {
@@ -171,7 +172,7 @@ public sealed class PGT(Memory<byte> raw) : DataMysteryGift(raw), IRibbonSetEven
             var a = LCRNG.Next16(ref seed);
             var b = LCRNG.Next16(ref seed);
             var pid = (b << 16) | a;
-            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature((Nature)(pid % 25)))
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
                 continue;
             var c = LCRNG.Next15(ref seed);
             var d = LCRNG.Next15(ref seed);
@@ -182,7 +183,6 @@ public sealed class PGT(Memory<byte> raw) : DataMysteryGift(raw), IRibbonSetEven
                 continue;
 
             var xor = (a ^ b) >> 3;
-            var trXor = (tr.TID16 ^ tr.SID16) >> 3;
             bool shiny = xor == trXor;
             if (criteria.Shiny.IsShiny() != shiny)
                 continue;
@@ -209,7 +209,7 @@ public sealed class PGT(Memory<byte> raw) : DataMysteryGift(raw), IRibbonSetEven
             // Check for anti-shiny.
             var xor = (a ^ b) >> 3;
             bool arng = false;
-            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature((Nature)(pid % 25)))
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
             {
                 while (true)
                 {
@@ -221,7 +221,7 @@ public sealed class PGT(Memory<byte> raw) : DataMysteryGift(raw), IRibbonSetEven
                     arng = true;
                     break;
                 }
-                if (!criteria.IsSatisfiedNature((Nature)(pid % 25)))
+                if (!criteria.IsSatisfiedNature(pid))
                     continue;
             }
 
@@ -371,7 +371,7 @@ public sealed class PGT(Memory<byte> raw) : DataMysteryGift(raw), IRibbonSetEven
                     break;
                 pid = ARNG.Next(pid);
             }
-            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature((Nature)(pid % 25)))
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
                 continue;
             if (EntityGender.GetFromPIDAndRatio(pid, gr) != gender)
                 continue;
@@ -446,6 +446,17 @@ public sealed class PGT(Memory<byte> raw) : DataMysteryGift(raw), IRibbonSetEven
     public bool RibbonWorld { get => PK.RibbonWorld; set => PK.RibbonWorld = value; }
     public bool RibbonChampionWorld { get => PK.RibbonChampionWorld; set => PK.RibbonChampionWorld = value; }
     public bool RibbonSouvenir { get => PK.RibbonSouvenir; set => PK.RibbonSouvenir = value; }
+
+    public byte RibbonChampionWorldDescription { get => Data[0xF4]; set => Data[0xF4] = value; }
+    public byte RibbonBirthdayDescription { get => Data[0xF5]; set => Data[0xF5] = value; }
+    public byte RibbonSpecialDescription { get => Data[0xF6]; set => Data[0xF6] = value; }
+    public byte RibbonSouvenirDescription { get => Data[0xF7]; set => Data[0xF7] = value; }
+    public byte RibbonWishingDescription { get => Data[0xF8]; set => Data[0xF8] = value; }
+    public byte RibbonClassicDescription { get => Data[0xF9]; set => Data[0xF9] = value; }
+    public byte RibbonPremierDescription { get => Data[0xFA]; set => Data[0xFA] = value; }
+    public byte RibbonChampionBattleDescription { get => Data[0xFB]; set => Data[0xFB] = value; }
+    public byte RibbonChampionRegionalDescription { get => Data[0xFC]; set => Data[0xFC] = value; }
+    public byte RibbonChampionNationalDescription { get => Data[0xFD]; set => Data[0xFD] = value; }
 
     public RandomCorrelationRating IsCompatible(PIDType type, PKM pk)
     {

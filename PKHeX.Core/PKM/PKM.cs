@@ -105,7 +105,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public abstract int HeldItem { get; set; }
     public abstract byte Gender { get; set; }
     public abstract Nature Nature { get; set; }
-    public virtual Nature StatNature { get => Nature; set => Nature = value; }
+    public virtual Nature StatAlignment { get => Nature; set => Nature = value; }
     public abstract int Ability { get; set; }
     public abstract byte CurrentFriendship { get; set; }
     public abstract byte Form { get; set; }
@@ -300,10 +300,16 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
 
     /// <summary> Maximum length a Trainer Name can be represented as. </summary>
     public abstract int MaxStringLengthTrainer { get; }
+
     /// <summary> Maximum length a Nickname can be represented as. </summary>
     public abstract int MaxStringLengthNickname { get; }
-    /// <summary> Total characters allocated for holding a Trainer Name. </summary>
+
+    /// <summary> Total characters allocated for holding an Original Trainer Name. </summary>
     public abstract int TrashCharCountTrainer { get; }
+
+    /// <summary> Total characters allocated for holding a Handling Trainer Name. </summary>
+    public virtual int TrashCharCountHandler => TrashCharCountTrainer;
+
     /// <summary> Total characters allocated for holding a Nickname. </summary>
     public abstract int TrashCharCountNickname { get; }
 
@@ -338,10 +344,15 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public virtual bool BDSP => Version is BD or SP;
     public virtual bool LA => Version is PLA;
     public virtual bool SV => Version is SL or VL;
+    public virtual bool VC3 => Version is FRX or LGX;
     public bool ZA => Version is GameVersion.ZA;
 
     public bool GO_LGPE => GO && MetLocation == Locations.GO7;
     public bool GO_HOME => GO && MetLocation == Locations.GO8;
+
+    /// <summary>
+    /// Nintendo 3DS Virtual Console Game (Generation 1 and 2)
+    /// </summary>
     public bool VC => VC1 || VC2;
     public bool GG => LGPE || GO_LGPE;
     public bool Gen9 => SV || ZA;
@@ -411,10 +422,8 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
 
     public string FileNameWithoutExtension => EntityFileNamer.GetName(this);
 
-    public int[] IVs
+    public ReadOnlySpan<int> IVs
     {
-        [Obsolete($"Use the {nameof(GetIVs)} method with stackalloc to not allocate.")]
-        get => [IV_HP, IV_ATK, IV_DEF, IV_SPE, IV_SPA, IV_SPD];
         set => SetIVs(value);
     }
 
@@ -522,7 +531,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     /// </summary>
     /// <param name="move">Move ID to add.</param>
     /// <param name="pushOut">If the current moveset is full, whether to push out the oldest move (index 0) to add the new one.</param>
-    /// <returns></returns>
+    /// <returns>True if the move was added, false if not added.</returns>
     public bool AddMove(ushort move, bool pushOut = true)
     {
         if (move == 0 || move >= MaxMoveID || HasMove(move))
@@ -622,7 +631,13 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     /// Checks if the PKM has its original met location.
     /// </summary>
     /// <returns>Returns false if the Met Location has been overwritten via generational transfer.</returns>
-    public virtual bool HasOriginalMetLocation => !(Format < 3 || VC || (Generation <= 4 && Format != Generation));
+    public virtual bool HasOriginalMetLocation => !(Format < 3 || VC || VC3 || (Generation <= 4 && Format != Generation));
+
+    /// <summary>
+    /// Checks if the PKM has its original met level.
+    /// </summary>
+    /// <returns>Returns false if the Met Level has been overwritten via generational transfer.</returns>
+    public virtual bool HasOriginalMetLevel => !(Format < 3 || VC || (Generation <= 4 && Format != Generation));
 
     /// <summary>
     /// Checks if the current <see cref="Gender"/> is valid.
@@ -753,8 +768,8 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         else
             LoadStats(stats, p, level);
 
-        // Amplify stats based on the stat nature.
-        StatNature.ModifyStatsForNature(stats);
+        // Amplify stats based on the stat alignment.
+        StatAlignment.ModifyStatsForAlignment(stats);
     }
 
     private void LoadStats(Span<ushort> stats, IBaseStat p, IHyperTrain t, byte level)
@@ -899,7 +914,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public virtual void SetShiny()
     {
         var rnd = Util.Rand;
-        do { PID = EntityPID.GetRandomPID(rnd, Species, Gender, Version, Nature, Form, PID); }
+        do PID = EntityPID.GetRandomPID(rnd, Species, Gender, Version, Nature, Form, PID);
         while (!IsShiny);
         if (Format >= 6 && (Gen3 || Gen4 || Gen5))
             EncryptionConstant = PID;
@@ -1034,6 +1049,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     /// Applies all shared properties from the current <see cref="PKM"/> to the <see cref="result"/> <see cref="PKM"/>.
     /// </summary>
     /// <param name="result"><see cref="PKM"/> that receives property values.</param>
+    [RequiresUnreferencedCode("Copies format-specific PKM properties via reflection for unsupported cross-format conversions.")]
     public void TransferPropertiesWithReflection(PKM result)
     {
         // Only transfer declared properties not defined in PKM.cs but in the actual type

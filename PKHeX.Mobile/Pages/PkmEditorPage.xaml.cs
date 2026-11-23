@@ -721,7 +721,7 @@ public partial class PkmEditorPage : ContentPage
         if (NaturePicker.SelectedIndex >= 0)
         {
             pk.Nature = (Nature)NaturePicker.SelectedIndex;
-            pk.StatNature = pk.Nature;
+            // StatNature removed in PKHeX 261018 core; Nature is the stat nature by default
         }
 
         if (GenderPicker.SelectedIndex >= 0)

@@ -33,9 +33,9 @@ public static class EntityFormat
         SIZE_3PARTY or SIZE_3STORED   => FormatPK3,
         SIZE_3CSTORED                 => FormatCK3,
         SIZE_3XSTORED                 => FormatXK3,
-        SIZE_4PARTY or SIZE_4STORED   => GetFormat45(data),
         SIZE_4RSTORED                 => FormatRK4,
-        SIZE_5PARTY                   => FormatPK5,
+        SIZE_4PARTY or SIZE_4STORED or SIZE_5PARTY
+                                      => GetFormat45(data),
         SIZE_6STORED                  => GetFormat67(data),
         SIZE_6PARTY                   => GetFormat67_PGT(data),
         SIZE_8PARTY  or SIZE_8STORED  => GetFormat89(data),
@@ -67,14 +67,12 @@ public static class EntityFormat
     // assumes decrypted state
     private static EntityFormatDetected GetFormat45(ReadOnlySpan<byte> data)
     {
-        if (data.Length == SIZE_4RSTORED)
-            return FormatRK4;
         if (ReadUInt16LittleEndian(data[0x4..]) != 0)
             return FormatBK4; // BK4 non-zero sanity
         if (data[0x5F] < 0x10 && ReadUInt16LittleEndian(data[0x80..]) < 0x3333)
-            return FormatPK4; // Gen3/4 version origin, not Transporter
+            return data.Length == SIZE_5PARTY ? FormatBK4 : FormatPK4; // Gen3/4 version origin, not Transporter
         if (ReadUInt16LittleEndian(data[0x46..]) != 0)
-            return FormatPK4; // PK4.MetLocationExtended (unused in PK5)
+            return data.Length == SIZE_5PARTY ? FormatBK4 : FormatPK4; // PK4.MetLocationExtended (unused in PK5)
         return FormatPK5;
     }
 
@@ -95,14 +93,19 @@ public static class EntityFormat
         var pk = new PK8(data.ToArray()); // Force decryption
 
         var core = pk.Data;
+        if (ReadUInt32LittleEndian(core[0x120..]) == 0) // Uncaptured (no egg/met locations)
+            return GetFormat89Uncaptured(core);
+
         if (core[0x11F] == 0) // PK8/PB8: Unused Alignment, PK9/PA9: Obedience Level
         {
             // Can still be zero if it's an egg in S/V.
             var ivs = ReadUInt32LittleEndian(core[0x8C..]);
             if (((ivs >> 30) & 1) != 1) // IsEgg flag not set!
+            {
                 // Not an egg, therefore should have obedience level as PK9/PA9.
                 // Since it doesn't, it's a Gen8 non-egg.
                 return IsFormatReally8b(pk);
+            }
 
             // ZA has no eggs. If 0xDE is non-zero, it's a Gen8 egg.
             if (core[0xDE] != 0) // SW/SH or BD/SP.
@@ -132,6 +135,19 @@ public static class EntityFormat
             return FormatPA9;
 
         return Format9or9a; // Could be either; let other clues like extension/current save file format differentiate.
+    }
+
+    private static EntityFormatDetected GetFormat89Uncaptured(ReadOnlySpan<byte> core)
+    {
+        // S/V does not set version.
+        // ZA sets version @ 0xCE; byte is used by Poké Jobs in SW/SH (unused in BD/SP), so it's a clear differentiator.
+        if (core[0xCE] == (byte)GameVersion.ZA) // Version
+            return FormatPA9;
+        if (core[0xE8] == 0) // 0xFF for Affixed Ribbon in Gen8 formats.
+            return FormatPK9;
+
+        // SW/SH and BD/SP are pretty much the same; not really interested in dumping BD/SP blank data. Defer to extension.
+        return Format8or8b;
     }
 
     /// <summary>

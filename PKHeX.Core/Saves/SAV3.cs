@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace PKHeX.Core;
@@ -8,13 +7,13 @@ namespace PKHeX.Core;
 /// <summary>
 /// Generation 3 <see cref="SaveFile"/> object.
 /// </summary>
-public abstract class SAV3 : SaveFile, ILangDeviantSave, IEventFlag37, IBoxDetailName, IBoxDetailWallpaper, IDaycareStorage, IDaycareEggState, IDaycareExperience
+public abstract class SAV3 : SaveFile, ILangDeviantSave, IEventFlag37, IBoxDetailName, IBoxDetailWallpaper, IDaycareStorage, IDaycareEggState, IDaycareExperience, IGiftRibbons
 {
     protected internal sealed override string ShortSummary => $"{OT} ({Version}) - {PlayTimeString}";
     public sealed override string Extension => ".sav";
 
     public int SaveRevision => Japanese ? 0 : 1;
-    public string SaveRevisionString => (Japanese ? "J" : "U") + (IsVirtualConsole ? "VC" : "GBA");
+    public string SaveRevisionString => (Japanese ? "-J" : "-U") + (IsVirtualConsole ? " [VC]" : " [GBA]");
     public bool Japanese { get; }
     public bool Korean => false;
 
@@ -526,7 +525,6 @@ public abstract class SAV3 : SaveFile, ILangDeviantSave, IEventFlag37, IBoxDetai
         SetSeen(species, true);
     }
 
-
     private const int PokeDex = 0x18; // small
 
     public sealed override bool GetCaught(ushort species)
@@ -638,7 +636,7 @@ public abstract class SAV3 : SaveFile, ILangDeviantSave, IEventFlag37, IBoxDetai
     /// <summary> Only used in Emerald for storing the Battle Video. </summary>
     public Memory<byte> GetFinalExternalData() => Buffer.Slice(0x1F000, SIZE_SECTOR_USED);
 
-    public bool IsCorruptPokedexFF() => MemoryMarshal.Read<ulong>(Small[0xAC..]) == ulong.MaxValue;
+    public bool IsCorruptPokedexFF() => BitConverter.ToUInt64(Small[0xAC..]) == ulong.MaxValue;
 
     public sealed override void CopyChangesFrom(SaveFile sav)
     {
@@ -654,20 +652,6 @@ public abstract class SAV3 : SaveFile, ILangDeviantSave, IEventFlag37, IBoxDetai
 
     public Span<byte> GiftRibbons => LargeBlock.GiftRibbons;
 
-    public void GiftRibbonsImport(ReadOnlySpan<byte> trade)
-    {
-        const int maxRibbonValue = 64;
-        var self = GiftRibbons;
-        for (int i = 0; i < GiftRibbons.Length; i++)
-        {
-            // ruby doesn't sanity check against 64, but emerald does.
-            // just do it for all games to ensure "legal" values only import.
-            if (self[i] == 0 && trade[i] != 0 && trade[i] < maxRibbonValue)
-                self[i] = trade[i];
-        }
-    }
-
-    public void GiftRibbonsClear() => GiftRibbons.Clear();
     private int ExternalEventData => LargeBlock.ExternalEventData;
     protected int ExternalEventFlags => ExternalEventData + 0x14;
 
