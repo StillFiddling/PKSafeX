@@ -296,6 +296,15 @@ public partial class GamePage : ContentPage
 
         LoadBox(_boxIndex);
         BindBoxHintTaps();
+
+#if ANDROID
+        // 诊断：返回后延迟一帧打印各行的实测高度（排查银行页/箱子页 2.5dp 位移）
+        Dispatcher.Dispatch(async () =>
+        {
+            await Task.Delay(700);
+            Console.WriteLine($"[LAYOUT] game page={Height:0.0} strip={PhoneTrainerStrip.Height:0.0} nav={BoxNavRow.Height:0.0} search={BoxSearchRow.Height:0.0} canvas={BoxCanvas.Height:0.0} canvasY={BoxCanvas.Frame.Y:0.0} bottomY={BottomGrid.Frame.Y:0.0} bottom={BottomGrid.Height:0.0} info={InfoBarGrid.Height:0.0}");
+        });
+#endif
     }
 
     /// <summary>系统返回 / 滑动返回：道具页有未保存改动时先问是否保存，别直接退出去。</summary>

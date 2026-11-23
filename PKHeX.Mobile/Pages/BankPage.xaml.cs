@@ -76,6 +76,15 @@ public partial class BankPage : ContentPage
         FillSaveHeader();
         LoadBox(_boxIndex);
         BuildHintBar();
+
+#if ANDROID
+        // 诊断：打印银行页各行的实测高度，与箱子页对齐比对
+        Dispatcher.Dispatch(async () =>
+        {
+            await Task.Delay(700);
+            Console.WriteLine($"[LAYOUT] bank page={Height:0.0} header={HeaderRow.Height:0.0} nav={NavRow.Height:0.0} banner={ModeBanner.Height:0.0}/{ModeBanner.IsVisible} spacer={BoxTopSpacer.Height:0.0} canvas={BankCanvas.Height:0.0} canvasY={BankCanvas.Frame.Y:0.0} info={BankInfoBar.Height:0.0}");
+        });
+#endif
     }
 
     // 顶部「当前存档」信息（与箱子页同款）

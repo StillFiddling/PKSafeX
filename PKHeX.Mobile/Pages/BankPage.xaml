@@ -125,7 +125,7 @@
             </skia:SKCanvasView>
 
             <!-- ── Info bar（与箱子页同款：两行 Grid、同边距、同字号） ── -->
-            <Grid Grid.Row="5" ColumnDefinitions="*" RowDefinitions="Auto,Auto" RowSpacing="6"
+            <Grid Grid.Row="5" x:Name="BankInfoBar" ColumnDefinitions="*" RowDefinitions="Auto,Auto" RowSpacing="6"
                   BackgroundColor="Transparent" Padding="16,8,16,12">
                 <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
                     <Label x:Name="HoverLabel"

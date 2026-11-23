@@ -5,14 +5,15 @@
              xmlns:theme="clr-namespace:PKHeX.Mobile.Theme"
              xmlns:svc="clr-namespace:PKHeX.Mobile.Services"
              x:Class="PKHeX.Mobile.Pages.GamePage"
-             Shell.NavBarIsVisible="False">
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{DynamicResource ThPageBg}">
 
     <!-- Root: top screen / bottom screen, with floating menu overlay -->
     <!-- ColumnDefinitions used for landscape single-screen two-column layout;
          in portrait/Thor one column is always collapsed to 0. -->
     <Grid x:Name="RootGrid" RowDefinitions="*,*" ColumnDefinitions="*,2*"
           RowSpacing="2" ColumnSpacing="2"
-          BackgroundColor="{DynamicResource ThRootBg}">
+          BackgroundColor="{DynamicResource ThPageBg}">
 
         <!-- ══════════════════════════════════════════════════════ -->
         <!--  TOP SCREEN — idle: trainer info  /  selected: detail  -->
@@ -449,7 +450,7 @@
             </skia:SKCanvasView>
 
             <!-- Info bar（两行：上行信息、下行提示按键，竖屏不挤在一起） -->
-            <Grid Grid.Row="5" ColumnDefinitions="*" RowDefinitions="Auto,Auto" RowSpacing="6" Padding="16,8,16,12">
+            <Grid Grid.Row="5" x:Name="InfoBarGrid" ColumnDefinitions="*" RowDefinitions="Auto,Auto" RowSpacing="6" Padding="16,8,16,12">
                 <!-- Slot info -->
                 <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
                     <Label x:Name="InfoSpeciesNum"
