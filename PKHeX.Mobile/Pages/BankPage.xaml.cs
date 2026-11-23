@@ -39,66 +39,12 @@ public partial class BankPage : ContentPage
         _secondary = secondary;
         _session   = session;
         InitializeComponent();
-        // 让箱子网格与「箱子页」落在同一垂直区间：用箱子页实测的画布顶边比例来算占位高度，
-        // 不再用「半屏 + 常量」估算（那样在不同屏高上会差几十 dp）。
-        SizeChanged += (_, _) => UpdateBoxSpacer();
-        LayoutChanged += (_, _) => UpdateBoxSpacer();
     }
 
     /// <summary>
-    /// 把银行页的画布摆到与箱子页画布完全相同的垂直区间：
-    /// 高度取箱子页画布高度，顶边用「实测顶边 vs 目标顶边」的差值自校正，
-    /// 不依赖页头/导航行的测量值（那两行在首次布局时还读不到高度）。
-    /// </summary>
-    private void UpdateBoxSpacer()
-    {
-        if (Height <= 0) return;
-
-        if (GamePage.BoxGridTopRatio <= 0 || GamePage.BoxGridBottomRatio <= GamePage.BoxGridTopRatio)
-        {
-            // 箱子页还没量过（正常从箱子页进来不会发生），按半屏兜底
-            BoxTopSpacer.HeightRequest = Math.Max(0, Height / 2 + 50);
-            return;
-        }
-
-        double targetTop = Height * GamePage.BoxGridTopRatio;
-        double canvasH   = Height * (GamePage.BoxGridBottomRatio - GamePage.BoxGridTopRatio);
-
-        if (Math.Abs(BankCanvas.HeightRequest - canvasH) > 0.5)
-        {
-            BankCanvas.HeightRequest   = canvasH;
-            BankCanvas.VerticalOptions = LayoutOptions.Start;
-        }
-
-        double cur = BoxTopSpacer.HeightRequest;
-        if (cur < 0) cur = 0;
-
-        double actualTop = CanvasTopDp();
-        if (actualTop <= 0)
-        {
-            // 还没完成一次布局：先按目标顶边减去大致页头高度粗放，下一轮会自校正
-            if (cur <= 0) BoxTopSpacer.HeightRequest = Math.Max(0, targetTop - 120);
-            return;
-        }
-
-        double delta = targetTop - actualTop;
-        if (Math.Abs(delta) > 1)
-            BoxTopSpacer.HeightRequest = Math.Max(0, cur + delta);
-    }
-
-    /// <summary>银行画布顶边相对整页的 y（dp）。</summary>
-    private double CanvasTopDp()
-    {
-        double offset = 0;
-        VisualElement? cur = BankCanvas;
-        while (cur is not null && cur is not Page)
-        {
-            offset += cur.Frame.Y;
-            cur     = cur.Parent as VisualElement;
-        }
-        return offset;
-    }
-
+    //  画布顶边/底边不再用代码推算：XAML 里用一个与箱子页搜索行同高同边距的透明占位
+    //  （44 高 + Margin 12,0,12,6）补齐银行页缺失的那一行，画布直接填满 `*` 行，
+    //  两页顶部块与底部信息条结构一致，位置自然对齐，无迭代、无首帧跳变。
     // ──────────────────────────────────────────────
     //  Lifecycle
     // ──────────────────────────────────────────────
@@ -130,7 +76,6 @@ public partial class BankPage : ContentPage
         FillSaveHeader();
         LoadBox(_boxIndex);
         BuildHintBar();
-        Dispatcher.Dispatch(UpdateBoxSpacer);
     }
 
     // 顶部「当前存档」信息（与箱子页同款）
@@ -214,6 +159,9 @@ public partial class BankPage : ContentPage
     // ──────────────────────────────────────────────
     //  Box navigation
     // ──────────────────────────────────────────────
+
+    private void OnPrevBoxTapped(object? sender, TappedEventArgs e) => OnPrevBox(sender, EventArgs.Empty);
+    private void OnNextBoxTapped(object? sender, TappedEventArgs e) => OnNextBox(sender, EventArgs.Empty);
 
     private void OnPrevBox(object sender, EventArgs e)
     {
