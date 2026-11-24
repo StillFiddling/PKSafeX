@@ -58,6 +58,7 @@
                            PaintSurface="OnDexPaint">
             <skia:SKCanvasView.GestureRecognizers>
                 <PanGestureRecognizer PanUpdated="OnPan" />
+                <TapGestureRecognizer Tapped="OnDexTapped" />
             </skia:SKCanvasView.GestureRecognizers>
         </skia:SKCanvasView>
 

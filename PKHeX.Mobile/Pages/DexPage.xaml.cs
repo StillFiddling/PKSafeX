@@ -371,6 +371,60 @@ public partial class DexPage : ContentPage
         using var numPaint = new SKPaint { Color = new SKColor(200, 200, 200, numAlpha), IsAntialias = true };
         float numY = rect.Bottom - numStripH / 2f + fontSize * 0.38f;
         canvas.DrawText($"#{species:000}", rect.MidX, numY, SKTextAlign.Center, numFont, numPaint);
+
+        // 已捕获：右上角一枚精灵球角标
+        if (state == DexState.Caught)
+            DrawBallBadge(canvas, rect);
+    }
+
+    /// <summary>右上角精灵球：上红下白、黑带、中心圈。</summary>
+    private void DrawBallBadge(SKCanvas canvas, SKRect rect)
+    {
+        float r  = _slotSize * 0.082f;
+        float cx = rect.Right - r - _slotSize * 0.05f;
+        float cy = rect.Top   + r + _slotSize * 0.05f;
+
+        // 白色球底
+        using var bg = new SKPaint { Color = new SKColor(255, 255, 255, 232), IsAntialias = true };
+        canvas.DrawCircle(cx, cy, r, bg);
+
+        // 上半红色（裁剪后画圆）
+        using var red = new SKPaint { Color = new SKColor(214, 48, 48, 238), IsAntialias = true };
+        canvas.Save();
+        canvas.ClipRect(SKRect.Create(cx - r, cy - r, r * 2f, r));
+        canvas.DrawCircle(cx, cy, r, red);
+        canvas.Restore();
+
+        // 中间黑带
+        using var band = new SKPaint
+        {
+            Color = new SKColor(28, 28, 28, 240),
+            StrokeWidth = r * 0.20f,
+            IsAntialias = true,
+        };
+        canvas.DrawLine(cx - r, cy, cx + r, cy, band);
+
+        // 外圈描边
+        using var ring = new SKPaint
+        {
+            Color = new SKColor(28, 28, 28, 240),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = r * 0.11f,
+            IsAntialias = true,
+        };
+        canvas.DrawCircle(cx, cy, r, ring);
+
+        // 中心白圈 + 描边
+        using var hub = new SKPaint { Color = new SKColor(255, 255, 255, 245), IsAntialias = true };
+        canvas.DrawCircle(cx, cy, r * 0.31f, hub);
+        using var hubRing = new SKPaint
+        {
+            Color = new SKColor(28, 28, 28, 235),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = r * 0.09f,
+            IsAntialias = true,
+        };
+        canvas.DrawCircle(cx, cy, r * 0.31f, hubRing);
     }
 
     // ── Pan gesture (touch scroll) ─────────────────────────────────────────────
@@ -394,6 +448,46 @@ public partial class DexPage : ContentPage
     {
         float maxOffset = Math.Max(0, _canvasTotalHeight - _viewHeightPx);
         _scrollOffsetPx = Math.Clamp(value, 0, maxOffset);
+    }
+
+    // ── 点击选中 ───────────────────────────────────────────────────────────────
+
+    private void OnDexTapped(object? sender, TappedEventArgs e)
+    {
+        if (_slotSize <= 0) return;
+
+        var pos = e.GetPosition(DexCanvas);
+        if (pos is null) return;
+
+        // GetPosition 给的是 dp，绘制用的是 px
+        float density = (float)DeviceDisplay.MainDisplayInfo.Density;
+        int slot = HitTestSlot((float)pos.Value.X * density, (float)pos.Value.Y * density);
+        if (slot < 0 || slot == _cursorSlot) return;
+
+        _cursorSlot = slot;
+        UpdateFooter();
+        DexCanvas.InvalidateSurface();
+    }
+
+    /// <summary>屏幕像素坐标 → 图鉴格号；横向落在内边距外返回 -1，纵向越界夹到首尾行。</summary>
+    private int HitTestSlot(float xPx, float yPx)
+    {
+        if (_slotSize <= 0 || _viewWidthPx <= 0 || _rowHeight <= 0) return -1;
+
+        float pad  = _viewWidthPx * 0.025f;
+        float gap  = _viewWidthPx * 0.012f;
+        float step = _slotSize + gap;
+
+        if (xPx < pad || xPx > _viewWidthPx - pad) return -1;
+
+        int col = (int)((xPx - pad) / step);
+        int row = (int)((yPx + _scrollOffsetPx - pad) / _rowHeight);
+
+        col = Math.Clamp(col, 0, Columns - 1);
+        row = Math.Max(0, row);
+
+        int slot = row * Columns + col;
+        return slot >= 0 && slot < TotalSpecies ? slot : -1;
     }
 
     // ── Gamepad ────────────────────────────────────────────────────────────────
