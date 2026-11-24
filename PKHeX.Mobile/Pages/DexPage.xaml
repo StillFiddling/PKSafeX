@@ -9,26 +9,48 @@
 
     <Grid RowDefinitions="Auto,*,Auto">
 
-        <!-- ── Header ── -->
-        <Grid Grid.Row="0" Padding="16,12,16,8" ColumnDefinitions="*,Auto"
+        <!-- ── Header：标题 + 当前存档胶囊 ── -->
+        <Grid Grid.Row="0" Padding="16,10,16,8" ColumnDefinitions="*,Auto" ColumnSpacing="10"
               BackgroundColor="{DynamicResource ThPageBg}">
             <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
                 <Label Text="图鉴" FontFamily="NunitoBold" FontSize="22"
                        TextColor="{DynamicResource ThTextPrimary}" />
-                <Label x:Name="CaughtLabel" FontFamily="Nunito" FontSize="12"
-                       TextColor="{DynamicResource ThTextSecondary}" />
+                <Label x:Name="CaughtLabel" FontFamily="Nunito" FontSize="10.5"
+                       TextColor="{DynamicResource ThTextSecondary}" MaxLines="1"
+                       LineBreakMode="TailTruncation" />
+                <Label x:Name="DexNote" FontFamily="Nunito" FontSize="9.5"
+                       TextColor="{DynamicResource ThTextDim}" MaxLines="1"
+                       LineBreakMode="TailTruncation" IsVisible="False" />
             </VerticalStackLayout>
-            <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
-                <Border StrokeShape="RoundRectangle 5"
-                        BackgroundColor="{DynamicResource ThHintBg}"
-                        Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
-                        Padding="6,3">
-                    <Label Text="选择" FontFamily="NunitoExtraBold" FontSize="9"
-                           TextColor="{DynamicResource ThTextSecondary}" />
-                </Border>
-                <Label Text="扫描存档" FontFamily="Nunito" FontSize="11"
-                       TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center" />
-            </HorizontalStackLayout>
+
+            <Border x:Name="SaveChip" Grid.Column="1" VerticalOptions="Center"
+                    WidthRequest="186" HeightRequest="40" Padding="8,4,10,4"
+                    StrokeShape="RoundRectangle 9"
+                    BackgroundColor="{DynamicResource ThCardBg}"
+                    Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSaveChipTapped" />
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="Auto,7,*,Auto">
+                    <Border Grid.Column="0" StrokeShape="RoundRectangle 7"
+                            Stroke="#14FFFFFF" StrokeThickness="1"
+                            WidthRequest="24" HeightRequest="24" VerticalOptions="Center">
+                        <Image x:Name="SaveChipIcon" WidthRequest="24" HeightRequest="24"
+                               Aspect="AspectFill" />
+                    </Border>
+                    <VerticalStackLayout Grid.Column="2" Spacing="0" VerticalOptions="Center">
+                        <Label x:Name="SaveChipName" FontFamily="NunitoExtraBold" FontSize="12.5"
+                               TextColor="{DynamicResource ThTextPrimary}" MaxLines="1"
+                               LineBreakMode="TailTruncation" />
+                        <Label x:Name="SaveChipMeta" FontFamily="Nunito" FontSize="9"
+                               TextColor="{DynamicResource ThTextDim}" MaxLines="1"
+                               LineBreakMode="TailTruncation" />
+                    </VerticalStackLayout>
+                    <Label Grid.Column="3" Text="▾" FontFamily="Nunito" FontSize="10"
+                           TextColor="{DynamicResource ThTextDim}" VerticalOptions="Center"
+                           Margin="6,0,0,0" />
+                </Grid>
+            </Border>
         </Grid>
 
         <!-- ── Dex grid (virtual scroll) ── -->
@@ -55,6 +77,44 @@
                                        Spacing="6" VerticalOptions="Center" />
             </Grid>
         </Border>
+
+        <!-- ── 存档选择浮层（底部上滑） ── -->
+        <Grid x:Name="SavePickerOverlay" Grid.Row="0" Grid.RowSpan="3"
+              IsVisible="False" BackgroundColor="#B3000000">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnPickerScrimTapped" />
+            </Grid.GestureRecognizers>
+
+            <Border VerticalOptions="End" StrokeShape="RoundRectangle 18,18,0,0"
+                    BackgroundColor="{DynamicResource ThPageBg}"
+                    Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnPickerCardTapped" />
+                </Border.GestureRecognizers>
+                <Grid RowDefinitions="Auto,Auto,*" Padding="0,14,0,10">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Padding="18,0,14,10">
+                        <Label Grid.Column="0" Text="选择存档" FontFamily="NunitoBold" FontSize="15"
+                               TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
+                        <Border Grid.Column="1" StrokeShape="RoundRectangle 7" Padding="8,4"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPickerCloseTapped" />
+                            </Border.GestureRecognizers>
+                            <Label Text="✕" FontFamily="NunitoBold" FontSize="11"
+                                   TextColor="{DynamicResource ThTextSecondary}" />
+                        </Border>
+                    </Grid>
+
+                    <Label x:Name="PickerHint" Grid.Row="1" FontFamily="Nunito" FontSize="10"
+                           TextColor="{DynamicResource ThTextDim}" Padding="18,0,18,8" />
+
+                    <ScrollView Grid.Row="2" MaximumHeightRequest="380">
+                        <VerticalStackLayout x:Name="SavePickerList" Padding="14,0,14,14" Spacing="8" />
+                    </ScrollView>
+                </Grid>
+            </Border>
+        </Grid>
 
     </Grid>
 </ContentPage>
