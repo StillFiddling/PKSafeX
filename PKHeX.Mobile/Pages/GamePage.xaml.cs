@@ -39,7 +39,7 @@ public partial class GamePage : ContentPage
 
     // Action menu (Start button)
     private bool _menuOpen;
-    private int  _menuCursor; // 0 = Save, 1 = Export, 2 = Items
+    private int  _menuCursor; // 0 = Export, 1 = Items
 
     // Move mode
     private bool _moveMode;
@@ -94,6 +94,7 @@ public partial class GamePage : ContentPage
     private float _gridOffsetY;
     private int _lastCanvasW;
     private int _lastCanvasH;
+    private int _paintLogN;     // 诊断（临时）：记录本次出现后的前几次绘制
 
     // Radar animation
     private float[]                  _radarCurrent = new float[6];
@@ -132,6 +133,33 @@ public partial class GamePage : ContentPage
             if (PreviewCanvas.Width > 0) _canvasW = PreviewCanvas.Width;
             if (PreviewCanvas.Height > 0) _canvasH = PreviewCanvas.Height;
         };
+
+        // 记录箱子网格顶边在整页中的比例，供银行页把自己的网格摆到同一垂直区间。
+        SizeChanged       += (_, _) => UpdateBoxGridTopRatio();
+        BoxCanvas.SizeChanged += (_, _) => UpdateBoxGridTopRatio();
+    }
+
+    /// <summary>箱子网格画布顶边占整页高度的比例（0~1）；银行页用它对齐网格位置。</summary>
+    public static double BoxGridTopRatio { get; private set; }
+
+    /// <summary>箱子网格画布底边占整页高度的比例（0~1）；银行页把画布高度也对齐到这一区间。</summary>
+    public static double BoxGridBottomRatio { get; private set; }
+
+    private void UpdateBoxGridTopRatio()
+    {
+        if (Height <= 0 || BoxCanvas.Height <= 0) return;
+
+        double offset = 0;
+        VisualElement? cur = BoxCanvas;
+        while (cur is not null && cur is not Page)
+        {
+            offset += cur.Frame.Y;
+            cur     = cur.Parent as VisualElement;
+        }
+
+        if (offset <= 0) return;
+        BoxGridTopRatio    = offset / Height;
+        BoxGridBottomRatio = (offset + BoxCanvas.Height) / Height;
     }
 
     private static Border[] CreateTypeBadgePool() =>
@@ -170,6 +198,9 @@ public partial class GamePage : ContentPage
         GamepadRouter.BoxScrollRequested -= OnBoxScroll;
         GamepadRouter.BoxScrollRequested += OnBoxScroll;
 #endif
+        ItemRow.Changed -= OnItemChanged;
+        ItemRow.Changed += OnItemChanged;
+        BackCoordinator.Bind(HandleBackAction);
         var sav = _session.ActiveSave;
         if (sav is null) return;
 
@@ -266,12 +297,82 @@ public partial class GamePage : ContentPage
 
         LoadBox(_boxIndex);
         BindBoxHintTaps();
+
+#if ANDROID
+        // 诊断（临时）：返回后两个时间点打印各行的实测高度，排查银行页/箱子页 2.5dp 位移
+        _paintLogN = 0;
+        Services.DiagLog.Add("game appear enter");
+        void LogOnce(string when)
+        {
+            int absY = -1;
+#if ANDROID
+            if (BoxCanvas.Handler?.PlatformView is Android.Views.View pv)
+            {
+                var loc = new int[2];
+                pv.GetLocationOnScreen(loc);
+                absY = loc[1];
+            }
+#endif
+            Services.DiagLog.Add($"game {when} page={Height:0.0} root={RootGrid.Height:0.0}/{RootGrid.Frame.Y:0.0} rs={RootGrid.RowSpacing:0.##}/{RootGrid.ColumnSpacing:0.##} strip={PhoneTrainerStrip.Height:0.0} nav={BoxNavRow.Height:0.0} search={BoxSearchRow.Height:0.0} canvas={BoxCanvas.Height:0.0} canvasY={BoxCanvas.Frame.Y:0.0} absY={absY} gridAbsY={(absY < 0 ? -1 : absY + _gridOffsetY):0} bottomY={BottomGrid.Frame.Y:0.0} bottom={BottomGrid.Height:0.0} info={InfoBarGrid.Height:0.0} infoY={InfoBarGrid.Frame.Y:0.0} draw=cW{_canvasW} cH{_canvasH} offY{_gridOffsetY:0.0} slot{_gridSlotSize:0.0} gridH{(_gridSlotSize * Rows + 6 * (Rows - 1)):0.0}");
+        }
+        Dispatcher.Dispatch(async () =>
+        {
+            await Task.Delay(700);  LogOnce("t700");
+            await Task.Delay(900);  LogOnce("t1600");
+        });
+#endif
+    }
+
+    /// <summary>系统返回 / 滑动返回：道具页有未保存改动时先问是否保存，别直接退出去。</summary>
+    protected override bool OnBackButtonPressed()
+    {
+        if (_itemsTabActive)
+        {
+            _ = SwitchToBoxesTabAsync();
+            return true;
+        }
+        return base.OnBackButtonPressed();
+    }
+
+    /// <summary>
+    /// 系统返回 / 手势返回：与手柄 B 一致 —— 先关菜单/详情浮层，再处理道具页的未保存改动，
+    /// 都无事可做时返回 false，交给全局回调 pop 回存档列表。
+    /// </summary>
+    private bool HandleBackAction()
+    {
+        if (_menuOpen)
+        {
+            CloseActionMenu();
+            return true;
+        }
+
+        if (_isPhone && _phoneSheetVisible)
+        {
+            _ = HidePhoneDetailSheetAsync();
+            return true;
+        }
+
+        if (_itemsTabActive)
+        {
+            _ = SwitchToBoxesTabAsync();
+            return true;
+        }
+
+        if (_moveMode)
+        {
+            CancelMoveMode();
+            return true;
+        }
+
+        return false;
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
         CommitItems();
+        ItemRow.Changed -= OnItemChanged;
+        BackCoordinator.Unbind(HandleBackAction);
         // Instantly reset sheet so it's off-screen when returning
         if (_isPhone)
         {
@@ -312,6 +413,12 @@ public partial class GamePage : ContentPage
     private void ApplyPhoneLayout(bool landscape)
     {
         _isLandscapePhone = landscape;
+
+        // 行/列间距只在横屏有意义：竖屏时 Row0 被压成 0 高、Column1 为 0 宽，
+        // 但 2dp 间距照样从可用高度/宽度里扣，会让 BottomGrid 比银行页少 2dp，
+        // 画布随之矮 2dp，网格垂直居中后就出现整体位移。竖屏归零彻底消除这个差。
+        RootGrid.RowSpacing    = landscape ? 2 : 0;
+        RootGrid.ColumnSpacing = landscape ? 2 : 0;
 
         if (landscape)
         {
@@ -507,6 +614,10 @@ public partial class GamePage : ContentPage
         float gridH = slotSize * Rows + gap * (Rows - 1);
         float offX = (canvasW - gridW) / 2f;
         float offY = (canvasH - gridH) / 2f;
+        // 对齐到整像素：两页画布高相差不到 1px 时，居中结果会出现 0.5px 的亚像素偏移，
+        // 落到屏幕上就是一边清晰一边发虚。取整后两页画出的网格位置逐像素一致。
+        offX = MathF.Floor(offX);
+        offY = MathF.Floor(offY);
 
         _gridSlotSize = slotSize;
         _gridOffsetX = offX;
@@ -526,10 +637,16 @@ public partial class GamePage : ContentPage
     private void OnBoxPaintSurface(object sender, SKPaintSurfaceEventArgs e)
     {
         var canvas = e.Surface.Canvas;
-        canvas.Clear(ThemeService.CanvasBg);
+        // 与页面背景同色，避免箱子页/银行页的画布各自形成一条色带
+        canvas.Clear(ThemeService.PageBg);
         if (_currentBox.Length == 0) return;
 
         RecalcGridLayout(e.Info.Width, e.Info.Height);
+#if ANDROID
+        // 诊断（临时）：记录出现后的前几次绘制尺寸，用于捕捉进场瞬间的尺寸跳变
+        if (_paintLogN < 8)
+            Services.DiagLog.Add($"game paint#{++_paintLogN} cW={e.Info.Width} cH={e.Info.Height} offY={_gridOffsetY:0.0}");
+#endif
 
         const float radius = 10f;
 
@@ -1390,11 +1507,10 @@ public partial class GamePage : ContentPage
                     _menuCursor = Math.Max(0, _menuCursor - 1); UpdateMenuHighlight(); break;
                 case Android.Views.Keycode.DpadDown:
                 case Android.Views.Keycode.DpadRight:
-                    _menuCursor = Math.Min(2, _menuCursor + 1); UpdateMenuHighlight(); break;
+                    _menuCursor = Math.Min(1, _menuCursor + 1); UpdateMenuHighlight(); break;
                 case Android.Views.Keycode.ButtonA:
-                    if      (_menuCursor == 0) OnSaveClicked(this, EventArgs.Empty);
-                    else if (_menuCursor == 1) OnExportClicked(this, EventArgs.Empty);
-                    else                       OnItemsMenuClicked(this, EventArgs.Empty);
+                    if (_menuCursor == 0) OnExportClicked(this, EventArgs.Empty);
+                    else                  OnItemsMenuClicked(this, EventArgs.Empty);
                     CloseActionMenu(); break;
                 case Android.Views.Keycode.ButtonB:
                 case Android.Views.Keycode.ButtonStart:
@@ -1482,7 +1598,7 @@ public partial class GamePage : ContentPage
         ActionMenuPanel.BackgroundColor = ThemeColor("ThActionMenuPanel", "#0D1528");
         ActionMenuPanel.Stroke          = ThemeColor("ThActionMenuStroke", "#2A3F70");
         var textPrimary = ThemeColor("ThTextPrimary", "#EDF0FF");
-        foreach (var label in new[] { SaveMenuLabel, ExportMenuLabel, ItemsMenuLabel })
+        foreach (var label in new[] { ExportMenuLabel, ItemsMenuLabel })
             label.TextColor = textPrimary;
 
         ActionMenuOverlay.Opacity = 0;
@@ -1517,12 +1633,10 @@ public partial class GamePage : ContentPage
         var focusBg   = ThemeColor("ThSettingsRowFocus", "#182845");
         var accent    = ThemeColor("ThAccent",           "#3B8BFF");
 
-        MenuItem_Save.BackgroundColor   = _menuCursor == 0 ? focusBg : normalBg;
-        MenuItem_Export.BackgroundColor = _menuCursor == 1 ? focusBg : normalBg;
-        MenuItem_Items.BackgroundColor  = _menuCursor == 2 ? focusBg : normalBg;
-        MenuItem_Save.Stroke            = _menuCursor == 0 ? accent  : Colors.Transparent;
-        MenuItem_Export.Stroke          = _menuCursor == 1 ? accent  : Colors.Transparent;
-        MenuItem_Items.Stroke           = _menuCursor == 2 ? accent  : Colors.Transparent;
+        MenuItem_Export.BackgroundColor = _menuCursor == 0 ? focusBg : normalBg;
+        MenuItem_Items.BackgroundColor  = _menuCursor == 1 ? focusBg : normalBg;
+        MenuItem_Export.Stroke          = _menuCursor == 0 ? accent  : Colors.Transparent;
+        MenuItem_Items.Stroke           = _menuCursor == 1 ? accent  : Colors.Transparent;
     }
 
     // ──────────────────────────────────────────────
@@ -2034,13 +2148,17 @@ public partial class GamePage : ContentPage
     private async void OnSettingsClicked(object sender, EventArgs e)
         => await Shell.Current.GoToAsync(nameof(SettingsPage));
 
-    private async void OnSaveClicked(object sender, EventArgs e)
+    /// <summary>
+    /// 带冲突保护的整份写回：磁盘存档若已被游戏更新，先让用户选择，绝不在用户不知情时覆盖游戏进度。
+    /// 返回 true 表示确实写入了文件。
+    /// </summary>
+    private async Task<bool> WriteSaveGuardedAsync(bool announce)
     {
-        if (_sav is null) return;
+        if (_sav is null) return false;
         if (string.IsNullOrEmpty(_session.ActiveSaveFileUri))
         {
-            await DisplayAlertAsync("保存失败", "找不到原文件位置，请改用「导出」。", "OK");
-            return;
+            await DisplayAlertAsync("保存失败", "找不到原文件位置，请改用「导出存档」。", "OK");
+            return false;
         }
         try
         {
@@ -2066,15 +2184,19 @@ public partial class GamePage : ContentPage
                     {
                         await DisplayAlertAsync("重新加载失败", "磁盘上的存档无法解析，未做任何写入。", "OK");
                     }
-                    return;
+                    return false;
                 }
 
                 if (choice != "强制覆盖（会丢失游戏进度）")
-                    return;
+                    return false;
             }
 
             await SaveSyncService.ForceWriteAsync(_session);
-            await DisplayAlertAsync("已保存", $"已写回 {_session.ActiveSaveFileName}。", "OK");
+            if (announce)
+                await DisplayAlertAsync("已保存", $"已写回 {_session.ActiveSaveFileName}。", "OK");
+            else
+                Toast("已写回存档文件");
+            return true;
         }
         catch (Exception ex)
         {
@@ -2083,7 +2205,17 @@ public partial class GamePage : ContentPage
                 ? "写入权限被拒绝。请到「设置 → 查找 Azahar / MelonDS / RetroArch 存档」重新授权文件夹后重试。"
                 : ex.Message;
             await DisplayAlertAsync("保存失败", msg, "OK");
+            return false;
         }
+    }
+
+    /// <summary>短暂的轻提示，不打断操作。</summary>
+    private void Toast(string text)
+    {
+#if ANDROID
+        Android.Widget.Toast.MakeText(Android.App.Application.Context, text,
+            Android.Widget.ToastLength.Short)?.Show();
+#endif
     }
 
     /// <summary>进入箱子页时检查磁盘存档是否已被游戏更新，提示一次重新加载。</summary>

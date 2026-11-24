@@ -83,6 +83,7 @@ public static class LegalityCheckResultCodeExtensions
             EggLocationTrade => localization.EggLocationTrade,
             EggLocationTradeFail => localization.EggLocationTradeFail,
             EggMetLocationFail => localization.EggMetLocationFail,
+            EggMoveCombination => localization.EggMoveCombination,
             EggNature => localization.EggNature,
             EggPP => localization.EggPP,
             EggPPUp => localization.EggPPUp,
@@ -90,6 +91,7 @@ public static class LegalityCheckResultCodeExtensions
             EggShinyPokeStar => localization.EggShinyPokeStar,
             EggSpecies => localization.EggSpecies,
             EggUnhatched => localization.EggUnhatched,
+            EggBreedChain_0 => localization.EggBreedChain_0,
 
             // Encounter
             EncCondition => localization.EncCondition,
@@ -131,10 +133,11 @@ public static class LegalityCheckResultCodeExtensions
             EffortShouldBeZero => localization.EffortShouldBeZero,
             EffortEXPIncreased => localization.EffortEXPIncreased,
             EffortUntrainedCap_0 => localization.EffortUntrainedCap,
+            EffortUntrainedMoreEXP_0 => localization.EffortUntrainedMoreEXP_0,
 
             // Evolution
             EvoInvalid => localization.EvoInvalid,
-            EvoTradeReqOutsider_0 => localization.EvoTradeReqOutsider,
+            EvoTradeReqOutsider_01 => localization.EvoTradeReqOutsider,
             EvoTradeRequired => localization.EvoTradeRequired,
 
             // Form
@@ -173,6 +176,7 @@ public static class LegalityCheckResultCodeExtensions
             MarkValueUnusedBitsPresent => localization.MarkValueUnusedBitsPresent,
 
             // Moves
+            MovePPMatchesVirtualConsole => localization.MovePPMatchesVirtualConsole,
             MoveEvoFCombination_0 => localization.MoveEvoFCombination_0,
             MovePPExpectHealed_01 => localization.MovePPExpectHealed_01,
             MovePPTooHigh_01 => localization.MovePPTooHigh_01,
@@ -247,13 +251,19 @@ public static class LegalityCheckResultCodeExtensions
             G7BSocialShouldBe100Mood => localization.G7BSocialShouldBe100Mood,
             GanbaruStatLEQ_01 => localization.GanbaruStatTooHigh,
             GenderInvalidNone => localization.GenderInvalidNone,
-            GeoBadOrder => localization.GeoBadOrder,
             GeoHardwareInvalid => localization.GeoHardwareInvalid,
             GeoHardwareRange => localization.GeoHardwareRange,
             GeoHardwareValid => localization.GeoHardwareValid,
             GeoMemoryMissing => localization.GeoMemoryMissing,
             GeoNoCountryHT => localization.GeoNoCountryHT,
-            GeoNoRegion => localization.GeoNoRegion,
+            GeoBadOrder_0 => localization.GeoBadOrder_0,
+            GeoNoCountry_0 => localization.GeoNoCountry_0,
+            GeoNoRegion_0 => localization.GeoNoRegion_0,
+            GTSTrainerSanitized => localization.GTSTrainerSanitized,
+            GTSTradedKoreanInternational => localization.GTSTradedKoreanInternational,
+            GTSTrainerSanitizedExpected => localization.GTSTrainerSanitizedExpected,
+            GTSDisallowedClassicRibbon => localization.GTSDisallowedClassicRibbon,
+            GTSDisallowedTradedEgg => localization.GTSDisallowedTradedEgg,
             HintEvolvesToSpecies_0 => localization.HintEvolvesToSpecies_0,
             HintEvolvesToRareForm_0 => localization.HintEvolvesToRareForm_0,
             ItemEgg => localization.ItemEgg,
@@ -361,7 +371,7 @@ public static class LegalityCheckResultCodeExtensions
             StatIncorrectCP_0 => localization.StatIncorrectCP,
             StatGigantamaxInvalid => localization.StatGigantamaxInvalid,
             StatGigantamaxValid => localization.StatGigantamaxValid,
-            StatNatureInvalid => localization.StatNatureInvalid,
+            StatAlignmentInvalid => localization.StatAlignmentInvalid,
             StatBattleVersionInvalid => localization.StatBattleVersionInvalid,
             StatNobleInvalid => localization.StatNobleInvalid,
             StatAlphaInvalid => localization.StatAlphaInvalid,
@@ -397,7 +407,6 @@ public static class LegalityCheckResultCodeExtensions
             TransferMetLocation => localization.TransferMetLocation,
             TransferNature => localization.TransferNature,
             TransferObedienceLevel => localization.TransferObedienceLevel,
-            TransferKoreanGen4 => localization.TransferKoreanGen4,
             TransferEncryptGen6BitFlip => localization.TransferPIDECBitFlip,
             TransferEncryptGen6Equals => localization.TransferPIDECEquals,
             TransferEncryptGen6Xor => localization.TransferPIDECXor,

@@ -13,54 +13,83 @@ public partial class GamePage
     //  Items tab
     // ──────────────────────────────────────────────
 
-    private void OnBoxesTabTapped(object? sender, TappedEventArgs e) => SwitchToBoxesTab();
-    private void OnItemsTabTapped(object? sender, TappedEventArgs e) => SwitchToItemsTab();
-    private void OnItemsMenuClicked(object? sender, EventArgs e)     => SwitchToItemsTab();
-    private void OnItemsCloseTapped(object? sender, TappedEventArgs e) => SwitchToBoxesTab();
+    private async void OnItemsCloseTapped(object? sender, TappedEventArgs e) => await SwitchToBoxesTabAsync();
+    private void OnItemsMenuClicked(object? sender, EventArgs e) => SwitchToItemsTab();
+    private async void OnItemsSaveTapped(object? sender, TappedEventArgs e) => await SaveItemsAsync();
+
+    private bool _itemsDirty;
 
     private void SwitchToItemsTab()
     {
         if (_sav is null) return;
         _itemsTabActive      = true;
+        _itemsDirty          = false;
         ItemsPanel.IsVisible = true;
-        UpdateTabHighlight();
+        UpdateItemsSaveButton();
         BuildPocketTabs();
     }
 
-    private void SwitchToBoxesTab()
+    /// <param name="discard">true 表示已经决定放弃改动（不再追问）。</param>
+    private async Task<bool> SwitchToBoxesTabAsync(bool discard = false)
     {
+        if (_itemsTabActive && _itemsDirty && !discard)
+        {
+            bool save = await DisplayAlertAsync("道具改动尚未保存",
+                "当前道具页的修改还没写入存档文件。是否保存？", "保存", "不保存");
+            if (save && !await SaveItemsAsync())
+                return false;   // 保存失败就留在道具页，避免改动悄悄丢掉
+        }
+
         CommitItems();
+        _itemsDirty          = false;
         _itemsTabActive      = false;
         _itemEditMode        = false;
         ItemsPanel.IsVisible = false;
-        UpdateTabHighlight();
+        return true;
     }
+
+    /// <summary>把道具改动写回存档文件（带冲突保护）。返回是否写入成功。</summary>
+    private async Task<bool> SaveItemsAsync()
+    {
+        CommitItems();
+        bool ok = await WriteSaveGuardedAsync(announce: false);
+        if (ok)
+        {
+            _itemsDirty = false;
+            UpdateItemsSaveButton();
+        }
+        return ok;
+    }
+
+    /// <summary>有未保存改动时把保存按钮点亮，没有则显示「已保存」。</summary>
+    private void UpdateItemsSaveButton()
+    {
+        if (ItemsSaveLabel is null || ItemsSaveButton is null) return;
+
+        bool light = Current == PkTheme.Light;
+        ItemsSaveLabel.Text = _itemsDirty ? "保存改动" : "已保存";
+        ItemsSaveLabel.TextColor = _itemsDirty
+            ? Color.FromArgb("#FFFFFF")
+            : Color.FromArgb(light ? "#555E78" : "#778BAA");
+        ItemsSaveButton.BackgroundColor = _itemsDirty
+            ? Color.FromArgb("#3B8BFF")
+            : Color.FromArgb(light ? "#F4F6FB" : "#0C1120");
+        ItemsSaveButton.Stroke = Color.FromArgb(_itemsDirty ? "#3B8BFF" : (light ? "#E0E4EC" : "#1AFFFFFF"));
+    }
+
+    private void OnItemChanged()
+        => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!_itemsTabActive) return;
+            if (_itemsDirty) return;
+            _itemsDirty = true;
+            UpdateItemsSaveButton();
+        });
 
     private void CommitItems()
     {
         if (_bag is null || _sav is null) return;
         try { _bag.CopyTo(_sav); } catch { }
-    }
-
-    private void UpdateTabHighlight()
-    {
-        bool light = Current == PkTheme.Light;
-        var activeBg  = Color.FromArgb(light ? "#DCE8FF" : "#182242");
-        var inactiveBg = Color.FromArgb(light ? "#F4F6FB" : "#0C1120");
-        var activeStroke   = Color.FromArgb("#3B8BFF");
-        var inactiveStroke = Color.FromArgb(light ? "#E0E4EC" : "#1AFFFFFF");
-        var activeText   = Color.FromArgb(light ? "#1A3A8F" : "#90B8FF");
-        var inactiveText = Color.FromArgb(light ? "#555E78" : "#778BAA");
-
-        BoxesTab.BackgroundColor = _itemsTabActive ? inactiveBg : activeBg;
-        BoxesTab.Stroke          = _itemsTabActive ? inactiveStroke : activeStroke;
-        if (BoxesTab.Content is Label bLabel)
-            bLabel.TextColor = _itemsTabActive ? inactiveText : activeText;
-
-        ItemsTab.BackgroundColor = _itemsTabActive ? activeBg : inactiveBg;
-        ItemsTab.Stroke          = _itemsTabActive ? activeStroke : inactiveStroke;
-        if (ItemsTab.Content is Label iLabel)
-            iLabel.TextColor = _itemsTabActive ? activeText : inactiveText;
     }
 
     private void BuildPocketTabs()
@@ -249,8 +278,11 @@ public partial class GamePage
                     && !_itemRows[_itemCursor].IsKeyItem)
                     _itemEditMode = true;
                 break;
+            case Android.Views.Keycode.ButtonStart:
+                if (_itemsDirty) _ = SaveItemsAsync();
+                break;
             case Android.Views.Keycode.ButtonB:
-                SwitchToBoxesTab();
+                _ = SwitchToBoxesTabAsync();
                 break;
         }
     }

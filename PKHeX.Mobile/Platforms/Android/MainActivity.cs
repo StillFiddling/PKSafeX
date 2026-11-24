@@ -152,6 +152,10 @@ public class MainActivity : MauiAppCompatActivity
             if (gap < 600) return;
             _lastBack = now;
 
+            // 当前页面若注册了「B 语义」的返回动作（关浮层 / 问是否保存 / 取消移动…），
+            // 先交给它处理；它不处理才走下面的默认返回。
+            if (Services.BackCoordinator.TryHandle()) return;
+
             var shell = Microsoft.Maui.Controls.Shell.Current;
             var page = shell?.CurrentPage;
 

@@ -34,6 +34,13 @@ public partial class BankPage : ContentPage
     private int  _detailSlot = -1;
     private bool _detailVisible;
 
+    // 最近一次绘制使用的几何（像素），仅用于诊断日志
+    private float _paintCanvasH, _paintOffY, _paintSlot, _paintGridH;
+    private int _paintLogN;     // 诊断（临时）：记录本次出现后的前几次绘制
+    // 进场首帧画布尺寸尚未定型（实测 546.6dp，稳定后 518.9dp），此时绘制会让网格
+    // 比稳定位置低 49px 再向上跳。布局定型前只铺底色，不画网格。
+    private bool _paintReady;
+
     public BankPage(ISecondaryDisplay secondary, SessionState session)
     {
         _secondary = secondary;
@@ -41,6 +48,10 @@ public partial class BankPage : ContentPage
         InitializeComponent();
     }
 
+    /// <summary>
+    //  画布顶边/底边不再用代码推算：XAML 里用一个与箱子页搜索行同高同边距的透明占位
+    //  （44 高 + Margin 12,0,12,6）补齐银行页缺失的那一行，画布直接填满 `*` 行，
+    //  两页顶部块与底部信息条结构一致，位置自然对齐，无迭代、无首帧跳变。
     // ──────────────────────────────────────────────
     //  Lifecycle
     // ──────────────────────────────────────────────
@@ -56,6 +67,7 @@ public partial class BankPage : ContentPage
 #endif
         ThemeService.ThemeChanged -= OnThemeChanged;
         ThemeService.ThemeChanged += OnThemeChanged;
+        BackCoordinator.Bind(HandleBackAction);
         // Slide in the inner grid (not `this`) so hit-testing is always correct
         RootGrid.TranslationX = _session.BankSlideDir < 0 ? -500 : 500;
         await RootGrid.TranslateToAsync(0, 0, 260, Easing.CubicInOut);
@@ -71,6 +83,40 @@ public partial class BankPage : ContentPage
         FillSaveHeader();
         LoadBox(_boxIndex);
         BuildHintBar();
+
+        // 布局定型后再开始绘制网格：等两帧布局 + 少量延时，
+        // 避开首帧画布 546.6dp / 稳定后 518.9dp 的跳变。
+        _paintReady = false;
+        Dispatcher.Dispatch(async () =>
+        {
+            await Task.Delay(80);
+            _paintReady = true;
+            BankCanvas.InvalidateSurface();
+        });
+
+#if ANDROID
+        // 诊断（临时）：银行页两个时间点的行高，与箱子页比对
+        _paintLogN = 0;
+        Services.DiagLog.Add("bank appear enter");
+        void LogOnce(string when)
+        {
+            int absY = -1;
+#if ANDROID
+            if (BankCanvas.Handler?.PlatformView is Android.Views.View pv)
+            {
+                var loc = new int[2];
+                pv.GetLocationOnScreen(loc);
+                absY = loc[1];
+            }
+#endif
+            Services.DiagLog.Add($"bank {when} page={Height:0.0} root={RootGrid.Height:0.0}/{RootGrid.Frame.Y:0.0} header={HeaderRow.Height:0.0} nav={NavRow.Height:0.0} banner={ModeBanner.Height:0.0}/{ModeBanner.IsVisible} spacer={BoxTopSpacer.Height:0.0} canvas={BankCanvas.Height:0.0} canvasY={BankCanvas.Frame.Y:0.0} absY={absY} gridAbsY={(absY < 0 ? -1 : absY + _paintOffY):0} info={BankInfoBar.Height:0.0} infoY={BankInfoBar.Frame.Y:0.0} draw=cH{_paintCanvasH:0} offY{_paintOffY:0.0} slot{_paintSlot:0.0} gridH{_paintGridH:0.0}");
+        }
+        Dispatcher.Dispatch(async () =>
+        {
+            await Task.Delay(700);  LogOnce("t700");
+            await Task.Delay(900);  LogOnce("t1600");
+        });
+#endif
     }
 
     // 顶部「当前存档」信息（与箱子页同款）
@@ -104,6 +150,31 @@ public partial class BankPage : ContentPage
         GamepadRouter.BoxScrollRequested -= OnBoxScroll;
 #endif
         ThemeService.ThemeChanged -= OnThemeChanged;
+        BackCoordinator.Unbind(HandleBackAction);
+        _paintReady = false;   // 下次进场重新等布局定型
+    }
+
+    /// <summary>
+    /// 系统返回 / 手势返回：与 B 一致 —— 详情浮层开着先关掉、移动模式先取消，
+    /// 都没有才回箱子页。
+    /// </summary>
+    private bool HandleBackAction()
+    {
+        if (_detailVisible)
+        {
+            _ = HideDetailAsync();
+            return true;
+        }
+
+        if (_moveMode)
+        {
+            CancelMoveMode();
+            return true;
+        }
+
+        _session.PendingMove = null;
+        _ = SwapToGame();
+        return true;
     }
 
     private void OnThemeChanged() =>
@@ -118,7 +189,6 @@ public partial class BankPage : ContentPage
         _boxIndex      = box;
         _currentSlots  = _bank.GetBoxData(box);
         BankNameLabel.Text  = LocalizeBankName(box < _bank.Boxes.Count ? _bank.Boxes[box].Name : $"银行 {box + 1}");
-        BoxIndexLabel.Text  = $"{box + 1} / {_bank.Boxes.Count}";
 
         await _sprites.PreloadBoxAsync(_currentSlots.Select(p => p ?? CreateBlankPKM()).ToArray());
         BankCanvas.InvalidateSurface();
@@ -130,6 +200,9 @@ public partial class BankPage : ContentPage
     // ──────────────────────────────────────────────
     //  Box navigation
     // ──────────────────────────────────────────────
+
+    private void OnPrevBoxTapped(object? sender, TappedEventArgs e) => OnPrevBox(sender, EventArgs.Empty);
+    private void OnNextBoxTapped(object? sender, TappedEventArgs e) => OnNextBox(sender, EventArgs.Empty);
 
     private void OnPrevBox(object sender, EventArgs e)
     {
@@ -163,8 +236,12 @@ public partial class BankPage : ContentPage
     private void OnBankPaintSurface(object sender, SKPaintSurfaceEventArgs e)
     {
         var canvas = e.Surface.Canvas;
-        canvas.Clear(ThemeService.CanvasBg);
+        // 与页面背景同色：整页只保留一层底色，画布区域不再出现单独的色带
+        canvas.Clear(ThemeService.PageBg);
         if (_currentSlots.Length == 0) return;
+        // 首帧布局未定型（画布高度会是 1913px 而非 1816px），此时不画网格，
+        // 否则网格会先低位再上跳 49px。等布局稳定后由 Dispatcher 触发重绘。
+        if (!_paintReady) return;
 
         const float gap    = 6f;
         const float padX   = 14f, padY = 4f;
@@ -177,6 +254,18 @@ public partial class BankPage : ContentPage
         float gridH    = slotSize * Rows    + gap * (Rows - 1);
         float offX     = (e.Info.Width  - gridW) / 2f;
         float offY     = (e.Info.Height - gridH) / 2f;
+        offX = MathF.Floor(offX);   // 与箱子页同样取整到整像素，避免 0.5px 亚像素差
+        offY = MathF.Floor(offY);
+
+        _paintCanvasH = e.Info.Height;
+        _paintOffY    = offY;
+        _paintSlot    = slotSize;
+        _paintGridH   = gridH;
+#if ANDROID
+        // 诊断（临时）：记录出现后的前几次绘制尺寸，用于捕捉进场瞬间的尺寸跳变
+        if (_paintLogN < 8)
+            Services.DiagLog.Add($"bank paint#{++_paintLogN} cW={e.Info.Width} cH={e.Info.Height} offY={offY:0.0}");
+#endif
 
         for (int i = 0; i < BankService.SlotsPerBox; i++)
         {
@@ -447,14 +536,13 @@ public partial class BankPage : ContentPage
 
         if (!ok)
         {
-            // 回退箱子：清掉待存入状态，原格不动
+            // 取消存入：清掉待存入状态，原格不动，停留在银行页
             _session.PendingMove       = null;
             _session.PendingFromBank   = false;
             _session.PendingSourceBox  = -1;
             _session.PendingSourceSlot = -1;
             UpdateModeBanner();
             LoadBox(_boxIndex);
-            await SwapToGame();
             return;
         }
 
@@ -500,7 +588,6 @@ public partial class BankPage : ContentPage
 
             UpdateModeBanner();
             LoadBox(_boxIndex);
-            await SwapToGame();
 
             if (merged)
                 await DisplayAlertAsync("已存入（含并最新进度）",
@@ -632,6 +719,7 @@ public partial class BankPage : ContentPage
         if (exitDir != 0) _session.BankSlideDir = exitDir;
 
         double exitX = _session.BankSlideDir < 0 ? -500 : 500;
+        Services.DiagLog.Add($"bank exit begin dir={exitDir}");
         await RootGrid.TranslateToAsync(exitX, 0, 260, Easing.CubicInOut);
         RootGrid.TranslationX = 0;
         await Shell.Current.GoToAsync("..", false);
@@ -648,8 +736,7 @@ public partial class BankPage : ContentPage
             var name = _session.PendingMove.Species < _strings.specieslist.Length
                 ? _strings.specieslist[_session.PendingMove.Species] : "?";
             ModeLabel.Text      = $"存入中：{name}  Lv.{_session.PendingMove.CurrentLevel}  - 按 A 放入";
-            ModeLabel.TextColor = Color.FromArgb("#44DDAA");
-            ModeBanner.BackgroundColor = Color.FromArgb("#0A1E0E");
+            ModeLabel.TextColor = HintPalette.AccentConfirm;
             ModeBanner.IsVisible = true;
         }
         else if (_moveMode && _movePk != null)
@@ -657,8 +744,7 @@ public partial class BankPage : ContentPage
             var name = _movePk.Species < _strings.specieslist.Length
                 ? _strings.specieslist[_movePk.Species] : "?";
             ModeLabel.Text      = $"取出中：{name}  Lv.{_movePk.CurrentLevel}  - 用 L1/R1 带到箱子页，B 取消";
-            ModeLabel.TextColor = Color.FromArgb("#DDAA44");
-            ModeBanner.BackgroundColor = Color.FromArgb("#1E1A0A");
+            ModeLabel.TextColor = HintPalette.AccentSave;
             ModeBanner.IsVisible = true;
         }
         else

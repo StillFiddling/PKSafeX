@@ -179,4 +179,62 @@ public partial class GamePage
 
         await Shell.Current.GoToAsync(nameof(BankPage), false);
     }
+
+    // 放生：清空这一格并安全写回存档。只在这里（箱子/队伍详情）提供，银行页没有。
+    private async void OnPhoneSheetReleaseTapped(object? sender, TappedEventArgs e)
+    {
+        var pk = _phoneSheetPk;
+        if (pk is null || pk.Species == 0) return;
+        Haptic();
+
+        var name  = MoveSpeciesName(pk);
+        var place = _boxIndex == -1
+            ? $"队伍第 {_cursorSlot + 1} 位"
+            : $"箱子 {_boxIndex + 1} 第 {_cursorSlot + 1} 格";
+
+        var first = await DisplayAlertAsync("放生确认",
+            $"{name} Lv.{pk.CurrentLevel}（{place}）即将放生。\n放生会清空这一格，并立刻写入存档文件。",
+            "继续", "取消");
+        if (!first) return;
+
+        var second = await DisplayAlertAsync("再次确认",
+            $"{name} 放生后无法恢复，确定放生吗？\n若只是清掉神秘礼物导入的非法宝可梦，建议先备份存档。",
+            "确认放生", "取消");
+        if (!second) return;
+
+        await HidePhoneDetailSheetAsync();
+        DeselectSlot();
+
+        var box  = _boxIndex == -1 ? -2 : _boxIndex;
+        var slot = _cursorSlot;
+
+        try
+        {
+            var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
+            {
+                if (box == -2)
+                    s.SetPartySlotAtIndex(s.BlankPKM, slot);
+                else
+                    s.SetBoxSlotAtIndex(s.BlankPKM, box, slot);
+            });
+
+            if (result is SaveWriteResult.NoUri or SaveWriteResult.StaleUnreadable)
+                throw new InvalidOperationException(result == SaveWriteResult.NoUri
+                    ? "找不到原存档文件位置，请改用「导出」。"
+                    : "存档已被游戏更新且无法解析，请回首页重新加载存档后再试。");
+
+            _sav = _session.ActiveSave ?? _sav;
+            LoadBox(_boxIndex);
+
+            if (result == SaveWriteResult.MergedIntoLatest)
+                await DisplayAlertAsync("已放生（含并最新进度）",
+                    "检测到你在游戏里已经保存过更新的存档。\n本次只把这一格清空合并进最新存档，其它进度没有被覆盖。",
+                    "OK");
+        }
+        catch (Exception ex)
+        {
+            LoadBox(_boxIndex);
+            await DisplayAlertAsync("放生失败，存档未改动", ex.Message, "OK");
+        }
+    }
 }

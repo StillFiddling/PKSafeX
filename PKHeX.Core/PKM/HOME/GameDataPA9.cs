@@ -112,6 +112,10 @@ public sealed class GameDataPA9 : HomeOptional1, IGameDataSide<PA9>, IScaledSize
     {
         this.CopyTo(pk);
         pk.Scale = Scale;
+        pk.IsAlpha = IsAlpha;
+        if (IsAlpha)
+            pk.Scale = pk.HeightScalar = pk.WeightScalar = 255;
+
         PlusFlagsC.CopyTo(pk.PlusFlags0);
         PlusFlagsB.CopyTo(pk.PlusFlags1);
         pk.ObedienceLevel = Obedience_Level;
@@ -123,6 +127,7 @@ public sealed class GameDataPA9 : HomeOptional1, IGameDataSide<PA9>, IScaledSize
     {
         this.CopyFrom(pk);
         pkh.HeightScalar = Scale = pk.Scale; // Overwrite Height
+        IsAlpha = pk.IsAlpha;
         pk.PlusFlags0.CopyTo(PlusFlagsC);
         pk.PlusFlags1.CopyTo(PlusFlagsB);
         Obedience_Level = pk.ObedienceLevel;
@@ -135,6 +140,7 @@ public sealed class GameDataPA9 : HomeOptional1, IGameDataSide<PA9>, IScaledSize
         var pk = new PA9();
         pkh.CopyTo(pk);
         CopyTo(pk, pkh);
+        pk.Move1_PP = pk.Move2_PP = pk.Move3_PP = pk.Move4_PP = 0; // Match HOME's behavior of zero PP.
 
         pk.ResetPartyStats();
         pk.RefreshChecksum();
@@ -174,8 +180,8 @@ public sealed class GameDataPA9 : HomeOptional1, IGameDataSide<PA9>, IScaledSize
     public void InitializeFrom(IGameDataSide side, PKH pkh)
     {
         Ball = side.Ball;
-        MetLocation = side.MetLocation != Locations.Default8bNone ? side.MetLocation : (ushort)0;
-        EggLocation = side.EggLocation != Locations.Default8bNone ? side.EggLocation : (ushort)0;
+        MetLocation = side.MetLocation;
+        EggLocation = side.EggLocation;
 
         if (side is IScaledSize3 s3)
             Scale = s3.Scale;

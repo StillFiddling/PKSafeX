@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using PKHeX.Core;
 using PKHeX.Mobile.Pages;
@@ -133,6 +134,9 @@ public partial class MainPage : ContentPage
     {
         base.OnAppearing();
 
+        _homeEnterTicks = Stopwatch.GetTimestamp();
+        DiagLog.Add("[HOME] appear enter");
+
         try
         {
             await OnAppearingCoreAsync();
@@ -143,7 +147,14 @@ public partial class MainPage : ContentPage
             CrashLog.Write("MainPage.OnAppearing", ex);
             await ShowCrashAlertAsync("首页初始化异常", ex.Message);
         }
+
+        DiagLog.Add($"[HOME] appear done {HomeMs():F0}ms");
     }
+
+    private long _homeEnterTicks;
+
+    private double HomeMs()
+        => _homeEnterTicks == 0 ? 0 : Stopwatch.GetElapsedTime(_homeEnterTicks).TotalMilliseconds;
 
     private async Task OnAppearingCoreAsync()
     {
@@ -187,6 +198,9 @@ public partial class MainPage : ContentPage
             ApplyMainPageLayout(dual, Width > Height);
         });
 
+        // 主线程卡顿探针：判断「点不动」到底是主线程被占，还是输入/导航本身丢失
+        DiagLog.StartWatchdog();
+
         // 先把上次扫描结果从磁盘缓存读出来：「重进软件」不再面对空白等好几分钟
         bool usedCache = false;
         if (_session.LoadedSaves.Count == 0)
@@ -213,9 +227,19 @@ public partial class MainPage : ContentPage
                 TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
             _ = AddPendingSafeAsync();
         }
+        else if (!_homeBootstrapped && _session.LoadedSaves.Count > 0)
+        {
+            // 冷启动 + 有缓存：卡片立刻上屏，后台只校验「磁盘上变过的文件」，
+            // 全量扫描推迟到空闲时再做（负责发现新加进来的存档），
+            // 首页第一屏不再等那 6~7 秒的整盘遍历。
+            // 注意 RescanNeeded 默认是 true，这里必须一并清掉，否则下次回首页又会立刻全扫。
+            _session.RescanNeeded = false;
+            TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
+            _ = StartupVerifyThenIdleScanAsync();
+        }
         else if (_session.RescanNeeded || _session.LoadedSaves.Count == 0)
         {
-            // Show cached list immediately if available, then rescan in background.
+            // 明确要求重扫（管理页改过路径等）或一个缓存都没有：已有卡片先铺上，后台全量扫
             if (_session.LoadedSaves.Count > 0)
                 TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
             _ = RefreshSavesSafeAsync();
@@ -227,6 +251,7 @@ public partial class MainPage : ContentPage
             // 缓存铺出来的列表：后台只校验「有变化的文件」，不改动其它卡片
             if (usedCache) _ = VerifyCachedSafeAsync();
         }
+        _homeBootstrapped = true;
         TryStep("UpdateActionHighlight", UpdateActionHighlight);
         TryStep("BindHomeHintTaps", BindHomeHintTaps);
 
@@ -244,12 +269,44 @@ public partial class MainPage : ContentPage
         catch (Exception ex) { CrashLog.Write($"MainPage.{tag}", ex); }
     }
 
+    private bool _refreshRunning;
+    private bool _homeBootstrapped;
+
+    /// <summary>
+    /// 冷启动的省时路径：先用缓存卡片上屏，立刻做一次「只查变过的文件」的校验，
+    /// 等界面稳定 8 秒后再在后台补一次全量扫描（负责发现新加进来的存档）。
+    /// 全程都在后台线程，主线程只接收结果。
+    /// </summary>
+    private async Task StartupVerifyThenIdleScanAsync()
+    {
+        await VerifyCachedSafeAsync();
+        await Task.Delay(8000);
+        if (_refreshRunning)
+        {
+            DiagLog.Add("[HOME] idle scan skipped (refresh running)");
+            return;
+        }
+        DiagLog.Add("[HOME] idle scan start");
+        await RefreshSavesSafeAsync();
+    }
+
     private async Task RefreshSavesSafeAsync()
     {
+        // 返回首页会再次触发刷新；上一次还没跑完就直接复用它的结果，不叠第二遍。
+        if (_refreshRunning)
+        {
+            DiagLog.Add("[HOME] refresh skipped (already running)");
+            return;
+        }
+
+        _refreshRunning = true;
         MarkRefreshing(true);
+        var t0 = Stopwatch.GetTimestamp();
+        DiagLog.Add("[HOME] refresh start");
         try
         {
             await RefreshSavesAsync();
+            DiagLog.Add($"[HOME] refresh done {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0}ms");
         }
         catch (Exception ex)
         {
@@ -257,6 +314,7 @@ public partial class MainPage : ContentPage
         }
         finally
         {
+            _refreshRunning = false;
             MarkRefreshing(false);
         }
     }
@@ -265,9 +323,12 @@ public partial class MainPage : ContentPage
     private async Task VerifyCachedSafeAsync()
     {
         MarkRefreshing(true);
+        var t0 = Stopwatch.GetTimestamp();
+        DiagLog.Add("[HOME] verify start");
         try
         {
-            var verified = await _dirService.VerifyCachedAsync(_session.LoadedSaves);
+            var verified = await Task.Run(async () => await _dirService.VerifyCachedAsync(_session.LoadedSaves));
+            DiagLog.Add($"[HOME] verify done {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0}ms");
             if (verified.Count == 0) return;
             _session.LoadedSaves = verified;
             ApplySaveEntries(verified);
@@ -345,11 +406,12 @@ public partial class MainPage : ContentPage
 
             if (!CrashLog.HasLog) return;
 
-            var log = CrashLog.ReadLast();
+            // 对外测试版：不把原始堆栈糊到玩家脸上，只说明已记录、怎么反馈。
             bool clear = await DisplayAlertAsync(
-                "上次运行出现异常",
-                $"{log}\n\n点「清除记录」可关闭此提示。",
-                "关闭", "清除记录");
+                "上次退出不太正常",
+                "上次运行可能异常结束，相关信息已记录下来（不影响存档）。\n\n"
+                + "如果之后遇到卡顿或闪退，可以在设置里打开「诊断记录」，再点「导出布局日志」发给作者。",
+                "知道了", "清除这条记录");
             if (clear) CrashLog.Clear();
         }
         catch (Exception ex)
@@ -476,7 +538,10 @@ public partial class MainPage : ContentPage
 
     private async Task RefreshSavesAsync()
     {
-        var entries = await _dirService.ScanAllAsync();
+        // 整条扫描链（SAF 遍历、逐个存档解析、SHA-256 去重）都在主线程上跑过，
+        // 实测把 UI 线程占住 6 秒，期间点图鉴、点返回全被吞掉。
+        // 现在整段丢到后台线程，主线程只负责最后一次性刷新列表。
+        var entries = await Task.Run(async () => await _dirService.ScanAllAsync());
         _session.LoadedSaves = entries;
         _session.RescanNeeded = false;
         ApplySaveEntries(entries);
@@ -485,6 +550,8 @@ public partial class MainPage : ContentPage
 
     private void ApplySaveEntries(List<SaveEntry> entries)
     {
+        var t0 = Stopwatch.GetTimestamp();
+        DiagLog.Add($"[HOME] apply start {entries.Count} 个");
         _saveCards = entries.Select(e => new SaveCardViewModel(e)).ToList();
         SaveCardsList.ItemsSource = _saveCards;
         SaveCountLabel.Text = $"{_saveCards.Count} 个存档";
@@ -526,6 +593,7 @@ public partial class MainPage : ContentPage
         UpdateHeroPreview();
         UpdateActionHighlight();
         _secondary.ShowMainMenu(_saveCards.Cast<object>().ToList(), _cardCursor);
+        DiagLog.Add($"[HOME] apply done {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0}ms");
     }
 
     /// <summary>
@@ -955,7 +1023,41 @@ public partial class MainPage : ContentPage
     private void ActivatePrimaryButton()
     {
         if (_selectedSave is not null)
-            _ = Shell.Current.GoToAsync(nameof(GamePage));
+            _ = NavigateTo(nameof(GamePage));
+    }
+
+    /// <summary>
+    /// 统一的安全跳转：冷启动时 Shell 可能还没完成初始化，GoToAsync 会抛异常且被
+    /// 丢弃（表现为"点了没反应"）。这里捕获后短暂等待再重试一次，失败才提示。
+    /// </summary>
+    private async Task NavigateTo(string route)
+    {
+        var navT0 = Stopwatch.GetTimestamp();
+        DiagLog.Add($"[NAV] start -> {route} @{HomeMs():F0}ms");
+        try
+        {
+            await Shell.Current.GoToAsync(route);
+            DiagLog.Add($"[NAV] -> {route} ok {Stopwatch.GetElapsedTime(navT0).TotalMilliseconds:F0}ms");
+            return;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write($"Navigate:{route}", ex);
+            DiagLog.Add($"[NAV] -> {route} fail {Stopwatch.GetElapsedTime(navT0).TotalMilliseconds:F0}ms {ex.GetType().Name}");
+        }
+
+        await Task.Delay(250);
+
+        try
+        {
+            await Shell.Current.GoToAsync(route);
+            DiagLog.Add($"[NAV] -> {route} retry ok {Stopwatch.GetElapsedTime(navT0).TotalMilliseconds:F0}ms");
+        }
+        catch (Exception retry)
+        {
+            CrashLog.Write($"NavigateRetry:{route}", retry);
+            await DisplayAlertAsync("跳转失败", $"{route}：{retry.Message}", "OK");
+        }
     }
 
     private void ActivateTile(int tile)
@@ -963,7 +1065,7 @@ public partial class MainPage : ContentPage
         switch (tile)
         {
             case 0: // Gifts
-                _ = Shell.Current.GoToAsync(nameof(MysteryGiftDBPage));
+                _ = NavigateTo(nameof(MysteryGiftDBPage));
                 break;
             case 1: // Export
                 if (_selectedSave is not null)
@@ -972,13 +1074,13 @@ public partial class MainPage : ContentPage
             case 2: // Bank
                 // On Thor (dual screen): BankViewPage shows detail on top screen, grid on second screen.
                 // On phone: BankPage shows the full grid on the primary screen (BankViewPage has no grid there).
-                _ = Shell.Current.GoToAsync(_secondary.IsAvailable ? nameof(BankViewPage) : nameof(BankPage));
+                _ = NavigateTo(_secondary.IsAvailable ? nameof(BankViewPage) : nameof(BankPage));
                 break;
             case 3: // Dex
-                _ = Shell.Current.GoToAsync(nameof(DexPage));
+                _ = NavigateTo(nameof(DexPage));
                 break;
             case 4: // Settings
-                _ = Shell.Current.GoToAsync(nameof(SettingsPage));
+                _ = NavigateTo(nameof(SettingsPage));
                 break;
         }
     }
@@ -1016,7 +1118,11 @@ public partial class MainPage : ContentPage
     private void OnGiftsTapped(object? sender, EventArgs e) => ActivateTile(0);
     private void OnExportTapped(object? sender, EventArgs e) => ActivateTile(1);
     private void OnBankTapped(object? sender, EventArgs e) => ActivateTile(2);
-    private void OnDexTapped(object? sender, EventArgs e) => ActivateTile(3);
+    private void OnDexTapped(object? sender, EventArgs e)
+    {
+        DiagLog.Add($"[HOME] dex tap {HomeMs():F0}ms");
+        ActivateTile(3);
+    }
 
     // ── Action bar highlight ─────────────────────────────────────────────────
 
@@ -1094,7 +1200,7 @@ public partial class MainPage : ContentPage
                 CycleZone(1); break;
             case Android.Views.Keycode.ButtonSelect:
             case Android.Views.Keycode.ButtonStart:
-                _ = Shell.Current.GoToAsync(nameof(SettingsPage)); break;
+                _ = NavigateTo(nameof(SettingsPage)); break;
             case (Android.Views.Keycode)107: // KEYCODE_BUTTON_THUMBR — right stick click
                 _ = RefreshSavesAsync(); break;
         }

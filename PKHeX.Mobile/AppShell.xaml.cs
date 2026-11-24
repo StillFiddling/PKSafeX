@@ -15,6 +15,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
         Routing.RegisterRoute(nameof(MysteryGiftDBPage), typeof(MysteryGiftDBPage));
         Routing.RegisterRoute(nameof(FolderManagerPage), typeof(FolderManagerPage));
+        Routing.RegisterRoute(nameof(SpriteSourcePage), typeof(SpriteSourcePage));
         Routing.RegisterRoute(nameof(WelcomePage), typeof(WelcomePage));
         Routing.RegisterRoute(nameof(DexPage),     typeof(DexPage));
     }

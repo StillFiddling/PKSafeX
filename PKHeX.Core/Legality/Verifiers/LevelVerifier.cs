@@ -63,7 +63,7 @@ public sealed class LevelVerifier : Verifier
     {
         if (gift.Level == pk.MetLevel)
             return true;
-        if (!pk.HasOriginalMetLocation)
+        if (!pk.HasOriginalMetLevel)
             return true;
 
         return gift switch
@@ -95,7 +95,7 @@ public sealed class LevelVerifier : Verifier
         {
             // Pokémon has been traded illegally between games without evolving.
             // Trade evolution species IDs for Gen1 are sequential dex numbers.
-            data.AddLine(GetInvalid(EvoTradeReqOutsider_0, enc.Species + 1u));
+            data.AddLine(GetInvalid(EvoTradeReqOutsider_01, enc.Species, (ushort)(enc.Species + 1u)));
         }
     }
 

@@ -5,7 +5,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{DynamicResource ThPageBg}">
 
-    <Grid RowDefinitions="Auto,Auto,*" BackgroundColor="{DynamicResource ThPageBg}">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" BackgroundColor="{DynamicResource ThPageBg}">
 
         <!-- Header -->
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto"
@@ -16,21 +16,59 @@
                    TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.5"
                    VerticalOptions="Center" />
             <Label Grid.Column="1"
-                   Text="↕ nav  A inject  B back"
+                   Text="↕ 上下  A 接收  B 返回"
                    FontFamily="Nunito" FontSize="9"
                    TextColor="{DynamicResource ThTextHint}"
                    VerticalOptions="Center" />
         </Grid>
 
+        <!-- 礼物库（自备卡） -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="10"
+              Padding="16,10,16,2" BackgroundColor="{DynamicResource ThCardBg}">
+            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                <Label x:Name="LibraryCountLabel" FontFamily="Nunito" FontSize="11"
+                       TextColor="{DynamicResource ThTextSecondary}" MaxLines="1"
+                       LineBreakMode="TailTruncation" Text="自备礼物卡：0 张" />
+                <Label x:Name="LibraryPathLabel" FontFamily="Nunito" FontSize="9"
+                       TextColor="{DynamicResource ThTextDim}" MaxLines="1"
+                       LineBreakMode="HeadTruncation" />
+            </VerticalStackLayout>
+
+            <Border Grid.Column="1" StrokeShape="RoundRectangle 8" Padding="12,6"
+                    BackgroundColor="{DynamicResource ThHintBg}"
+                    Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                    VerticalOptions="Center">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnImportTapped" />
+                </Border.GestureRecognizers>
+                <Label Text="导入礼物卡" FontFamily="NunitoBold" FontSize="11"
+                       TextColor="{DynamicResource ThTextPrimary}" />
+            </Border>
+        </Grid>
+
+        <!-- 当前存档是否支持接收（Gen8/9 只可浏览） -->
+        <Border x:Name="SupportBanner"
+                IsVisible="False"
+                Grid.Row="3"
+                BackgroundColor="{DynamicResource ThHintBg}"
+                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
+                StrokeShape="RoundRectangle 10"
+                Margin="14,0,14,6" Padding="12,8">
+            <Label x:Name="SupportBannerLabel"
+                   FontFamily="Nunito" FontSize="11"
+                   TextColor="{DynamicResource ThTextSecondary}"
+                   LineBreakMode="WordWrap" />
+        </Border>
+
         <!-- Filter bar -->
-        <Border Grid.Row="1"
+        <Border Grid.Row="2"
                 BackgroundColor="{DynamicResource ThCardBg}"
                 Stroke="{DynamicResource ThDivider}" StrokeThickness="1"
                 StrokeShape="RoundRectangle 12"
-                Margin="14,10,14,4" Padding="12,2">
+                Margin="14,8,14,4" Padding="12,2">
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                 <Entry x:Name="SearchEntry"
-                       Placeholder="Search card title or species…"
+                       Placeholder="搜索卡片标题或宝可梦"
                        PlaceholderColor="{DynamicResource ThTextHint}"
                        BackgroundColor="Transparent"
                        TextColor="{DynamicResource ThTextPrimary}"
@@ -46,7 +84,7 @@
         </Border>
 
         <!-- Gift list -->
-        <CollectionView Grid.Row="2" x:Name="GiftList"
+        <CollectionView Grid.Row="4" x:Name="GiftList"
                         SelectionMode="Single"
                         SelectionChanged="OnGiftSelected"
                         BackgroundColor="Transparent"
@@ -113,6 +151,57 @@
                        Margin="0,40,0,0" />
             </CollectionView.EmptyView>
         </CollectionView>
+
+        <!-- 底部：我接收的礼物 -->
+        <Border Grid.Row="5" Margin="14,6,14,10" Padding="14,10"
+                StrokeShape="RoundRectangle 10"
+                BackgroundColor="{DynamicResource ThHintBg}"
+                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnReceivedTapped" />
+            </Border.GestureRecognizers>
+            <Label Text="我接收的礼物" FontFamily="NunitoBold" FontSize="12"
+                   HorizontalOptions="Center"
+                   TextColor="{DynamicResource ThTextPrimary}" />
+        </Border>
+
+        <!-- 礼物槽列表浮层 -->
+        <Grid x:Name="ReceivedOverlay" Grid.RowSpan="5" IsVisible="False"
+              BackgroundColor="#B3000000">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnReceivedBackdropTapped" />
+            </Grid.GestureRecognizers>
+            <Border VerticalOptions="End" StrokeShape="RoundRectangle 16,16,0,0"
+                    BackgroundColor="{DynamicResource ThCardBg}"
+                    Stroke="{DynamicResource ThDivider}" StrokeThickness="1"
+                    Padding="16,14">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnReceivedPanelTapped" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label x:Name="ReceivedTitle" FontFamily="NunitoExtraBold" FontSize="14"
+                               TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
+                        <Border Grid.Column="1" StrokeShape="RoundRectangle 8" Padding="8,2"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnReceivedCloseTapped" />
+                            </Border.GestureRecognizers>
+                            <Label Text="✕" FontFamily="NunitoBold" FontSize="12"
+                                   TextColor="{DynamicResource ThTextSecondary}" />
+                        </Border>
+                    </Grid>
+
+                    <ScrollView MaximumHeightRequest="420">
+                        <VerticalStackLayout x:Name="ReceivedList" Spacing="6" />
+                    </ScrollView>
+
+                    <Label x:Name="ReceivedHint" FontFamily="Nunito" FontSize="10"
+                           TextColor="{DynamicResource ThTextDim}" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
 
     </Grid>
 </ContentPage>

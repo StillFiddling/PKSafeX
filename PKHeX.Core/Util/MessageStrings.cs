@@ -133,6 +133,15 @@ public static class MessageStrings
 
     #endregion
 
+    #region Troubleshooting
+
+    public static string MsgTroubleshootingClipboardEmpty { get; set; } = "Clipboard is empty.";
+    public static string MsgTroubleshootingClipboardInvalidHex { get; set; } = "Clipboard does not contain a valid hex string.";
+    public static string MsgTroubleshootingPluginListHeader { get; set; } = "Loaded {0} plugins:";
+    public static string MsgTroubleshootingPluginListEmpty { get; set; } = "No plugins loaded.";
+
+    #endregion
+
     #region PKM Editor
 
     public static string MsgPKMLoadNull { get; set; } = "Attempted to load a null file.";
@@ -331,6 +340,18 @@ public static class MessageStrings
     public static string MsgMysteryGiftQREonTicket { get; set; } = "Eon Ticket Mystery Gift will not import correctly when received via QR.";
     public static string MsgMysteryGiftQREonTicketAdvice { get; set; } = "Inject the Eon Ticket Mystery Gift to the save file instead.";
 
+    #endregion
+
+    #region Battle Video
+    public static string MsgBattleVideo { get; set; } = "Battle Video";
+    public static string MsgBattleVideoIndex { get; set; } = "Battle Video {0}";
+    public static string MsgBattleVideoPlayerIndex { get; set; } = "Player {0}: {1}";
+    public static string MsgBattleVideoInvalid { get; set; } = "Battle Video is invalid.";
+    public static string MsgBattleVideoInvalidSlot { get; set; } = "Battle Video is not available.";
+    public static string MsgBattleVideoInvalidSize { get; set; } = "Invalid Battle Video. Expected exactly {0} bytes.";
+    public static string MsgBattleVideoInvalidIndex { get; set; } = "No battle video selected.";
+    public static string MsgBattleVideoImport { get; set; } = "Import Battle Video";
+    public static string MsgBattleVideoExport { get; set; } = "Export Battle Video";
     #endregion
 
     #region Inventory

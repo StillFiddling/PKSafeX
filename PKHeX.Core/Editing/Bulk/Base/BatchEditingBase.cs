@@ -123,14 +123,23 @@ public abstract class BatchEditingBase<TObject, TMeta> : IBatchEditor<TObject> w
     /// <summary>
     /// Checks if the entity is filtered by the provided filters.
     /// </summary>
+    [RequiresUnreferencedCode("Uses reflection-backed property caches to evaluate batch filters.")]
     public bool IsFilterMatch(IEnumerable<StringInstruction> filters, TObject entity)
     {
         var info = CreateMeta(entity);
         var localProps = GetProps(entity);
         foreach (var filter in filters)
         {
-            if (!IsFilterMatch(filter, info, entity, localProps))
+            try
+            {
+                if (!IsFilterMatch(filter, info, entity, localProps))
+                    return false;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.Message);
                 return false;
+            }
         }
         return true;
     }
@@ -138,12 +147,14 @@ public abstract class BatchEditingBase<TObject, TMeta> : IBatchEditor<TObject> w
     /// <summary>
     /// Tries to modify the entity.
     /// </summary>
+    [RequiresUnreferencedCode("Uses reflection-backed property caches to modify entity properties.")]
     public bool TryModifyIsSuccess(TObject entity, IEnumerable<StringInstruction> filters, IEnumerable<StringInstruction> modifications, Func<TObject, bool>? modifier = null)
         => TryModify(entity, filters, modifications, modifier) is ModifyResult.Modified;
 
     /// <summary>
     /// Tries to modify the entity using instructions and a custom modifier delegate.
     /// </summary>
+    [RequiresUnreferencedCode("Uses reflection-backed property caches to modify entity properties.")]
     public ModifyResult TryModify(TObject entity, IEnumerable<StringInstruction> filters, IEnumerable<StringInstruction> modifications, Func<TObject, bool>? modifier = null)
     {
         if (!ShouldModify(entity))

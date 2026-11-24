@@ -1,5 +1,6 @@
 0318	s	Defeated Saturn in Valor Cavern/Lake Verity Restored
 0350	s	Lake Valor Water Restored/Can get Palkia/Dialga entry at Celestic Town
+0214	s	Stark Mountain Quest Cleared
 0351	r	Dialga/Palkia Captured
 0482	r	Dialga/Palkia Disappeared from Spear Pillar
 0511	r	Uxie Disappeared
@@ -34,6 +35,7 @@
 2410	a	Cute Contest Master
 2411	a	Smart Contest Master
 2412	a	Tough Contest Master
+2444	a	Connected to Nintendo Wi-Fi Connection
 0329	r	Rotom Captured
 0665	s	Encountered Ghost Butler in Old Chateau
 0666	s	Encountered Ghost Girl in Old Chateau
@@ -42,6 +44,7 @@
 1023	i	Found Adamant/Lustrous Orb in Spear Pillar
 1233	i	Found Dread Plate in Old Chateau
 1234	i	Found TM90 in Old Chateau
+0304	i	Received TM64
 2401	*	Running Shoes disabled
 2433	s	2nd Rematch Against Trainers Unlocked
 0251	g	Received Happiny Egg Gift
@@ -56,7 +59,19 @@
 0134	g	Traded in Eterna City
 0244	g	Traded in Snowpoint City
 0245	g	Traded on Route 226
-0787	i	Found HP Up in dried Lake Valor
+0330	g	Received Globe (Mr. Goods)
+0331	g	Received Gym Statue (Mr. Goods)
+0332	g	Received Cute Cup (Mr. Goods)
+0333	g	Received Cool Cup (Mr. Goods)
+0334	g	Received Beauty Cup (Mr. Goods)
+0335	g	Received Tough Cup (Mr. Goods)
+0336	g	Received Clever Cup (Mr. Goods)
+0337	g	Received Blue Crystal (Mr. Goods)
+0338	g	Received Pink Crystal (Mr. Goods)
+0339	g	Received Red Crystal (Mr. Goods)
+0340	g	Received Yellow Crystal (Mr. Goods)
+0347	g	Received All Goods (Mr. Goods)
+0787	h	Found HP Up (hidden) in dried Lake Valor
 2507	s	Entered Pal Park Catching Show
 1409	t	Defeated Jogger Richard (Morning)
 1448	t	Defeated Policeman Bobby (Night)
@@ -219,4 +234,6 @@
 2136	t	Had Veteran Brian 2nd Rematch
 2137	t	Had Veteran Armando Rematch
 2733	*	Learned trendy phrase (Today)
+2737	*	Pokémon News Press Quest Complete (Today)
+0220	*	Pokémon News Press Reward Pending
 2738	t	Defeated Rival in Fight Area (Current Saturday/Sunday)

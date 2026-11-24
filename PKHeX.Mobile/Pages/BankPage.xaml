@@ -10,12 +10,12 @@
 
     <!-- 外层 Grid：详情浮层是 RootGrid 的兄弟，避免底部被溢出裁掉 -->
     <Grid>
-        <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,*,Auto"
+        <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto"
               BackgroundColor="{DynamicResource ThPageBg}">
 
             <!-- ── Save header（与箱子页顶部完全同款：图标 + 名字 + 游戏名 + 箱子 ▸） ── -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,12,*,Auto"
-                  BackgroundColor="{DynamicResource ThCardBg}" Padding="16,10,10,10">
+            <Grid x:Name="HeaderRow" Grid.Row="0" ColumnDefinitions="Auto,12,*,Auto"
+                  BackgroundColor="Transparent" Padding="14,10,10,6">
                 <Border StrokeShape="RoundRectangle 10"
                         Stroke="#0FFFFFFF" StrokeThickness="1"
                         WidthRequest="58" HeightRequest="58" VerticalOptions="Center">
@@ -58,61 +58,87 @@
             </Grid>
 
             <!-- ── 银行箱子导航 ── -->
-            <Grid Grid.Row="1" ColumnDefinitions="52,*,52" Padding="4,4">
-                <Button Grid.Column="0" x:Name="PrevBankBtn"
-                        Text="{x:Static theme:Ph.CaretLeft}"
-                        FontFamily="Phosphor"
-                        Clicked="OnPrevBox"
-                        BackgroundColor="{DynamicResource ThNavBtnBg}"
-                        TextColor="White"
-                        FontSize="18" Padding="0" />
+            <Grid x:Name="NavRow" Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Padding="16,12,16,8">
+                <Border x:Name="PrevBankBtn" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnPrevBoxTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static theme:Ph.CaretLeft}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
                 <VerticalStackLayout Grid.Column="1" HorizontalOptions="Center" Spacing="1">
                     <VerticalStackLayout.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnBoxHeaderTapped"/>
                     </VerticalStackLayout.GestureRecognizers>
                     <Label x:Name="BankNameLabel"
-                           TextColor="{DynamicResource ThTextPrimary}" FontSize="16" FontAttributes="Bold"
+                           FontFamily="QuicksandExtraBold" FontSize="18"
+                           TextColor="{DynamicResource ThTextPrimary}"
                            HorizontalOptions="Center" MaxLines="1" LineBreakMode="TailTruncation" />
-                    <Label x:Name="BoxIndexLabel"
-                           TextColor="{DynamicResource ThTextHint}" FontSize="10"
-                           HorizontalOptions="Center" />
+                    <Label Text="{x:Static svc:UiText.BankHintSubtitle}"
+                           FontFamily="Nunito" FontSize="9"
+                           TextColor="{DynamicResource ThTextHint}"
+                           HorizontalOptions="Center" VerticalOptions="Center" MaxLines="1" />
                 </VerticalStackLayout>
-                <Button Grid.Column="2" x:Name="NextBankBtn"
-                        Text="{x:Static theme:Ph.CaretRight}"
-                        FontFamily="Phosphor"
-                        Clicked="OnNextBox"
-                        BackgroundColor="{DynamicResource ThNavBtnBg}"
-                        TextColor="White"
-                        FontSize="18" Padding="0" />
+                <Border x:Name="NextBankBtn" Grid.Column="2" StrokeShape="RoundRectangle 10"
+                        BackgroundColor="{DynamicResource ThCardBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        WidthRequest="40" HeightRequest="36">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnNextBoxTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static theme:Ph.CaretRight}" FontFamily="Phosphor"
+                           FontSize="18" TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
             </Grid>
 
-            <!-- ── Mode banner ── -->
-            <Border Grid.Row="2" x:Name="ModeBanner"
-                    BackgroundColor="#0D1A0D" Stroke="Transparent"
-                    Padding="10,6" IsVisible="False">
+            <!-- ── Mode banner：不占行，叠在顶部占位里（与全应用提示条同一套卡片样式） ── -->
+            <Border Grid.Row="3" x:Name="ModeBanner"
+                    StrokeShape="RoundRectangle 10" StrokeThickness="1"
+                    BackgroundColor="{DynamicResource ThHintBg}"
+                    Stroke="{DynamicResource ThHintStroke}"
+                    Padding="10,4" Margin="12,0,12,6"
+                    HorizontalOptions="Fill" VerticalOptions="Center" IsVisible="False">
                 <Label x:Name="ModeLabel"
-                       TextColor="#44CC66" FontSize="13" FontAttributes="Bold"
+                       FontFamily="NunitoBold" FontSize="12"
+                       TextColor="#34D990"
                        HorizontalOptions="Center" MaxLines="2" LineBreakMode="TailTruncation" />
             </Border>
 
+            <!-- ── 顶部占位：与箱子页的搜索行同款同尺寸（44 高 + 12/0/12/6 外边距），
+                 银行页没有搜索框，用等高透明占位对齐画布顶边。
+                 额外 +2dp 上边距：箱子页 RootGrid 带 RowSpacing="2"，竖屏会把内容整体下推 2dp，
+                 银行页没有行间距，这里补回来，两页画布顶边才能严格重合。 ── -->
+            <Border Grid.Row="3" x:Name="BoxTopSpacer"
+                    StrokeShape="RoundRectangle 10" StrokeThickness="0"
+                    BackgroundColor="Transparent" InputTransparent="True"
+                    Margin="12,0,12,6" HeightRequest="44" />
+
             <!-- ── Bank grid ── -->
-            <skia:SKCanvasView Grid.Row="3" x:Name="BankCanvas"
+            <skia:SKCanvasView Grid.Row="4" x:Name="BankCanvas"
                                PaintSurface="OnBankPaintSurface">
                 <skia:SKCanvasView.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnBankTapped" />
                 </skia:SKCanvasView.GestureRecognizers>
             </skia:SKCanvasView>
 
-            <!-- ── Info bar（两行，竖屏不压按键） ── -->
-            <VerticalStackLayout Grid.Row="4" Spacing="4"
-                                 BackgroundColor="{DynamicResource ThCardBg}" Padding="12,6,12,8">
-                <Label x:Name="HoverLabel"
-                       TextColor="{DynamicResource ThTextSecondary}" FontSize="12"
-                       MaxLines="1" LineBreakMode="TailTruncation" />
-                <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-                    <HorizontalStackLayout x:Name="HintBar" Spacing="10" />
+            <!-- ── Info bar（与箱子页同款：两行 Grid、同边距、同字号） ── -->
+            <Grid Grid.Row="5" x:Name="BankInfoBar" ColumnDefinitions="*" RowDefinitions="Auto,Auto" RowSpacing="6"
+                  BackgroundColor="Transparent" Padding="16,8,16,12">
+                <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                    <Label x:Name="HoverLabel"
+                           FontFamily="Nunito" FontSize="12"
+                           TextColor="{DynamicResource ThTextSecondary}"
+                           MaxLines="1" LineBreakMode="TailTruncation" />
+                </HorizontalStackLayout>
+                <ScrollView Grid.Row="1" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                    <HorizontalStackLayout x:Name="HintBar" Spacing="8" VerticalOptions="Center" />
                 </ScrollView>
-            </VerticalStackLayout>
+            </Grid>
         </Grid>
 
         <!-- ══════════════════════════════════════════════════════ -->
