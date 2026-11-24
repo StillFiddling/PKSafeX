@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text;
 using PKHeX.Core;
 using PKHeX.Mobile.Services;
 
@@ -27,9 +28,45 @@ public partial class MysteryGiftDBPage : ContentPage
 #if ANDROID
         GamepadRouter.KeyReceived += OnGamepadKey;
 #endif
+        MysteryGiftLibraryService.EnsureLoaded();
+        UpdateLibraryBar();
+
         if (_all.Count == 0)
             BuildIndex();
         ApplyFilter();
+    }
+
+    private void UpdateLibraryBar()
+    {
+        var count = MysteryGiftLibraryService.CountFiles();
+        LibraryCountLabel.Text = count > 0
+            ? $"自备礼物卡：{count} 张（已并入列表）"
+            : "自备礼物卡：0 张，点右侧导入";
+        LibraryPathLabel.Text = MysteryGiftLibraryService.LibraryPath;
+    }
+
+    private async void OnImportTapped(object? sender, TappedEventArgs e)
+    {
+#if ANDROID
+        var picker = new Platforms.Android.AndroidFilePicker();
+        var uri = await picker.PickFileAsync();
+        if (string.IsNullOrEmpty(uri)) return;
+
+        var (ok, message) = await MysteryGiftLibraryService.ImportAsync(uri);
+        if (!ok)
+        {
+            await DisplayAlertAsync("未导入", message, "OK");
+            UpdateLibraryBar();
+            return;
+        }
+
+        _all = [];
+        BuildIndex();
+        UpdateLibraryBar();
+        ApplyFilter();
+
+        await DisplayAlertAsync("已导入", $"{message}。当前自备卡 {MysteryGiftLibraryService.CountFiles()} 张。", "OK");
+#endif
     }
 
     protected override void OnDisappearing()
@@ -100,11 +137,7 @@ public partial class MysteryGiftDBPage : ContentPage
                     ? _strings.specieslist[gift.Species] : gift.Species.ToString();
                 subInfo = $"{speciesName}  Lv.{gift.Level}";
 
-                sprite = new UriImageSource
-                {
-                    Uri = new Uri($"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/{gift.Species}.png"),
-                    CacheValidity = TimeSpan.FromDays(30),
-                };
+                sprite = LocalSpriteFirst(gift.Species, gift.Form);
             }
             else if (!gift.IsEntity)
             {
@@ -117,6 +150,20 @@ public partial class MysteryGiftDBPage : ContentPage
 
             _all.Add(new GiftEntry(gift, title, subInfo, $"Gen {gift.Generation}", sprite));
         }
+    }
+
+    /// <summary>本地 HOME 图优先（离线可用），没有才回落到网络。</summary>
+    private static ImageSource LocalSpriteFirst(ushort species, byte form)
+    {
+        var slug  = HomeSpriteCacheService.GetHomeSlug(species, form);
+        var local = Path.Combine(HomeSpriteCacheService.CacheRootPath, $"{slug}.png");
+        if (File.Exists(local)) return ImageSource.FromFile(local);
+
+        return new UriImageSource
+        {
+            Uri = new Uri(HomeSpriteCacheService.GetHomeUrl(species, form, false)),
+            CacheValidity = TimeSpan.FromDays(30),
+        };
     }
 
     private void ApplyFilter()
@@ -158,7 +205,11 @@ public partial class MysteryGiftDBPage : ContentPage
         GiftList.SelectedItem = null;
 
         var sav = _session.ActiveSave;
-        if (sav is null) return;
+        if (sav is null)
+        {
+            await DisplayAlertAsync("没有存档", "请先在首页加载一个存档，再来导入礼物。", "OK");
+            return;
+        }
 
         if (!entry.Gift.IsCardCompatible(sav, out var reason))
         {
@@ -166,41 +217,152 @@ public partial class MysteryGiftDBPage : ContentPage
             return;
         }
 
-        bool confirm = await DisplayAlertAsync(
-            entry.Gift.CardTitle,
-            $"Inject this gift into your save?\n\n{entry.SubInfo}",
-            "导入", "取消");
+        var gift = entry.Gift;
 
-        if (!confirm) return;
-
-        // Convert gift to PKM and find first free box slot
-        var pk = entry.Gift.ConvertToPKM(sav);
-        sav.AdaptToSaveFile(pk);
-
-        int targetBox = -1, targetSlot = -1;
-        for (int box = 0; box < sav.BoxCount && targetBox < 0; box++)
+        if (!gift.IsEntity || gift.Species <= 0)
         {
-            var data = sav.GetBoxData(box);
-            for (int slot = 0; slot < data.Length; slot++)
-            {
-                if (data[slot].Species == 0)
-                {
-                    targetBox = box;
-                    targetSlot = slot;
-                    break;
-                }
-            }
-        }
-
-        if (targetBox < 0)
-        {
-            await DisplayAlertAsync("空间不足", "所有箱子都已满。", "OK");
+            await DisplayAlertAsync("只支持宝可梦礼物",
+                "这张是道具礼物，当前版本还不能把道具写进存档。\n请选择宝可梦礼物卡。", "OK");
             return;
         }
 
-        sav.SetBoxSlotAtIndex(pk, targetBox, targetSlot);
-        await DisplayAlertAsync("完成", $"Gift injected into Box {targetBox + 1}, slot {targetSlot + 1}.", "OK");
+        var detail = BuildGiftDetail(gift);
+        if (FindExistingCopy(gift, sav, out var where))
+            detail += $"\n\n提示：{where} 已有一份同样的礼物宝可梦。";
+
+        var confirm = await DisplayAlertAsync(gift.CardTitle, detail, "选择位置", "取消");
+        if (!confirm) return;
+
+        var dest = await DisplayActionSheetAsync("导入到", "取消", null, "箱子", "银行");
+        if (dest is null || dest == "取消") return;
+
+        var pk = gift.ConvertToPKM(sav);
+        sav.AdaptToSaveFile(pk);
+
+        if (dest == "箱子")
+        {
+            if (!TryFindEmptyBoxSlot(sav, out int targetBox, out int targetSlot))
+            {
+                await DisplayAlertAsync("空间不足", "所有箱子都满了，可以先清出空格或改存银行。", "OK");
+                return;
+            }
+
+            sav.SetBoxSlotAtIndex(pk, targetBox, targetSlot);
+            await DisplayAlertAsync("完成",
+                $"已放入 箱子 {targetBox + 1} · 第 {targetSlot + 1} 格。\n记得到首页保存存档。", "OK");
+            return;
+        }
+
+        // 银行
+        var bank = BankService.Instance;
+        int bankBox = -1, bankSlot = -1;
+        for (int b = 0; b < bank.Boxes.Count; b++)
+        {
+            int empty = bank.FindFirstEmpty(b);
+            if (empty >= 0) { bankBox = b; bankSlot = empty; break; }
+        }
+        if (bankBox < 0)
+        {
+            bank.CreateBox($"Bank {bank.Boxes.Count + 1}");
+            bankBox  = bank.Boxes.Count - 1;
+            bankSlot = bank.FindFirstEmpty(bankBox);
+        }
+        if (bankBox < 0 || bankSlot < 0)
+        {
+            await DisplayAlertAsync("银行空间不足", "银行里没有可用空格。", "OK");
+            return;
+        }
+
+        bank.Deposit(bankBox, bankSlot, pk);
+        await DisplayAlertAsync("完成",
+            $"已存入 银行 第 {bankBox + 1} 箱 · 第 {bankSlot + 1} 格。", "OK");
     }
+
+    private static bool TryFindEmptyBoxSlot(SaveFile sav, out int box, out int slot)
+    {
+        for (box = 0; box < sav.BoxCount; box++)
+        {
+            var data = sav.GetBoxData(box);
+            for (slot = 0; slot < data.Length; slot++)
+            {
+                if (data[slot].Species == 0) return true;
+            }
+        }
+        box = slot = -1;
+        return false;
+    }
+
+    /// <summary>箱子里或银行里是否已经有同一张卡的产物（同种 + 同 OT + 同 ID）。</summary>
+    private static bool FindExistingCopy(MysteryGift gift, SaveFile sav, out string where)
+    {
+        where = "";
+
+        for (int b = 0; b < sav.BoxCount; b++)
+        {
+            var data = sav.GetBoxData(b);
+            for (int s = 0; s < data.Length; s++)
+            {
+                var pk = data[s];
+                if (pk.Species != gift.Species) continue;
+                if (pk.TID16 != gift.TID16 || pk.SID16 != gift.SID16) continue;
+                if (pk.OriginalTrainerName != gift.OriginalTrainerName) continue;
+
+                where = $"箱子 {b + 1} 第 {s + 1} 格";
+                return true;
+            }
+        }
+
+        var bank = BankService.Instance;
+        for (int b = 0; b < bank.Boxes.Count; b++)
+        {
+            var slots = bank.Boxes[b].Slots;
+            for (int s = 0; s < slots.Count; s++)
+            {
+                var slot = slots[s];
+                if (slot is null || slot.Species != gift.Species) continue;
+
+                var pk = slot.ToPKM();
+                if (pk is null) continue;
+                if (pk.TID16 != gift.TID16 || pk.SID16 != gift.SID16) continue;
+                if (pk.OriginalTrainerName != gift.OriginalTrainerName) continue;
+
+                where = $"银行 第 {b + 1} 箱 第 {s + 1} 格";
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string BuildGiftDetail(MysteryGift gift)
+    {
+        var sb = new StringBuilder();
+        sb.Append("卡片：").AppendLine(gift.CardHeader);
+        sb.Append("世代：").Append(gift.Generation).Append("    版本：").AppendLine(gift.Version.ToString());
+
+        var name = gift.Species > 0 && gift.Species < _strings.specieslist.Length
+            ? _strings.specieslist[gift.Species] : gift.Species.ToString();
+
+        sb.Append("宝可梦：").Append(name).Append("    等级：").AppendLine(gift.Level.ToString());
+        sb.Append("原训练家：").Append(gift.OriginalTrainerName)
+          .Append("    ID：").Append(gift.TID16).Append('/').AppendLine(gift.SID16.ToString());
+        sb.Append("携带道具：").AppendLine(gift.HeldItem > 0 ? gift.HeldItem.ToString() : "无");
+        sb.Append("闪光：").Append(ShinyLabel(gift.Shiny))
+          .Append("    命运相遇：").AppendLine(gift.FatefulEncounter ? "是" : "否");
+
+        return sb.ToString();
+    }
+
+    private static string ShinyLabel(Shiny shiny) => shiny switch
+    {
+        Shiny.Never       => "锁定不闪",
+        Shiny.Always      => "必定闪光",
+        Shiny.AlwaysStar  => "必定闪光（星）",
+        Shiny.AlwaysSquare => "必定闪光（方）",
+        Shiny.FixedValue  => "固定 PID",
+        _                 => "随机",
+    };
+
 }
 
 public class GiftEntry(MysteryGift gift, string title, string subInfo,
