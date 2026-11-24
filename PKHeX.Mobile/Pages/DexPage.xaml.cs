@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Maui.Controls.Shapes;
 using PKHeX.Core;
 using PKHeX.Mobile.Services;
@@ -127,7 +128,7 @@ public partial class DexPage : ContentPage
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-    protected override void OnAppearing()
+    protected override async void OnAppearing()
     {
         base.OnAppearing();
 #if ANDROID
@@ -140,11 +141,14 @@ public partial class DexPage : ContentPage
         ThemeService.ThemeChanged -= OnThemeChanged;
         ThemeService.ThemeChanged += OnThemeChanged;
 
+        var t0 = Stopwatch.GetTimestamp();
+        DiagLog.Add("[DEX] appear enter");
+
         if (!_initialized)
         {
             // 首次进入：取一次首页当前存档，之后不再跟随首页切换。
             _initialized = true;
-            UseActiveSave();
+            await UseActiveSaveAsync();
         }
         else
         {
@@ -155,12 +159,18 @@ public partial class DexPage : ContentPage
             DexCanvas.InvalidateSurface();
         }
 
+        DiagLog.Add($"[DEX] appear done {Ms(t0):F0}ms");
+
         _ = PreloadSpritesAsync();
     }
+
+    private static double Ms(long startTicks)
+        => Stopwatch.GetElapsedTime(startTicks).TotalMilliseconds;
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        DiagLog.Add("[DEX] disappear");
         try { _dexCts?.Cancel(); } catch { }
         BackCoordinator.Unbind(_backHandler);
 #if ANDROID
@@ -232,6 +242,9 @@ public partial class DexPage : ContentPage
 
         var canvas = e.Surface.Canvas;
         canvas.Clear(ThemeService.PageBg);
+
+        // 构建还没回来时只铺底色，避免空引用
+        if (_progress is null) return;
 
         // Only render visible rows (virtual scroll)
         int firstRow = Math.Max(0, (int)((_scrollOffsetPx - pad) / _rowHeight));
@@ -663,7 +676,7 @@ public partial class DexPage : ContentPage
 
     // ── 存档胶囊按钮 + 选择浮层 ────────────────────────────────────────────────
 
-    private void UseActiveSave()
+    private async Task UseActiveSaveAsync()
     {
         var sav = _session.ActiveSave;
         if (sav is null)
@@ -679,19 +692,39 @@ public partial class DexPage : ContentPage
             return;
         }
 
-        SetViewSave(sav, _session.ActiveSaveFileUri);
+        await SetViewSaveAsync(sav, _session.ActiveSaveFileUri);
     }
 
-    private void SetViewSave(SaveFile sav, string uri)
+    private async Task SetViewSaveAsync(SaveFile sav, string uri)
     {
         _viewSav  = sav;
-        _progress = _dex.Build(sav, uri);
+        CaughtLabel.Text = "统计中…";
 
+        // 整个图鉴构建（读 1025 只的捕获/见到状态 + 必要时扫箱子）放到后台线程，
+        // 否则首次进入会卡住主线程 3-4 秒，期间所有点击（含返回）都会被吞掉。
+        var t0 = Stopwatch.GetTimestamp();
+        DexProgress progress;
+        try
+        {
+            progress = await Task.Run(() => _dex.Build(sav, uri));
+        }
+        catch (Exception ex)
+        {
+            DiagLog.Add($"[DEX] build failed {Ms(t0):F0}ms {ex.Message}");
+            CaughtLabel.Text = "统计失败";
+            return;
+        }
+
+        DiagLog.Add($"[DEX] build {Ms(t0):F0}ms");
+
+        _progress = progress;
         SyncChip();
         UpdateCaughtLabel();
         UpdateFooter();
         PushDexStats();
         DexCanvas.InvalidateSurface();
+
+        DiagLog.Add($"[DEX] first render {Ms(t0):F0}ms");
     }
 
     private void SyncChip()
@@ -843,7 +876,7 @@ public partial class DexPage : ContentPage
         }
 
         ClosePicker();
-        SetViewSave(sav, c.Uri);
+        await SetViewSaveAsync(sav, c.Uri);
     }
 
     /// <summary>浮层里的一项：要么是首页已加载的 SaveFile，要么是扫描出来的 SaveEntry（按需解析）。</summary>

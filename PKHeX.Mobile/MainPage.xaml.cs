@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using PKHeX.Core;
 using PKHeX.Mobile.Pages;
@@ -133,6 +134,9 @@ public partial class MainPage : ContentPage
     {
         base.OnAppearing();
 
+        _homeEnterTicks = Stopwatch.GetTimestamp();
+        DiagLog.Add("[HOME] appear enter");
+
         try
         {
             await OnAppearingCoreAsync();
@@ -143,7 +147,14 @@ public partial class MainPage : ContentPage
             CrashLog.Write("MainPage.OnAppearing", ex);
             await ShowCrashAlertAsync("首页初始化异常", ex.Message);
         }
+
+        DiagLog.Add($"[HOME] appear done {HomeMs():F0}ms");
     }
+
+    private long _homeEnterTicks;
+
+    private double HomeMs()
+        => _homeEnterTicks == 0 ? 0 : Stopwatch.GetElapsedTime(_homeEnterTicks).TotalMilliseconds;
 
     private async Task OnAppearingCoreAsync()
     {
@@ -247,9 +258,12 @@ public partial class MainPage : ContentPage
     private async Task RefreshSavesSafeAsync()
     {
         MarkRefreshing(true);
+        var t0 = Stopwatch.GetTimestamp();
+        DiagLog.Add("[HOME] refresh start");
         try
         {
             await RefreshSavesAsync();
+            DiagLog.Add($"[HOME] refresh done {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0}ms");
         }
         catch (Exception ex)
         {
@@ -967,11 +981,13 @@ public partial class MainPage : ContentPage
         try
         {
             await Shell.Current.GoToAsync(route);
+            DiagLog.Add($"[NAV] -> {route} ok {HomeMs():F0}ms");
             return;
         }
         catch (Exception ex)
         {
             CrashLog.Write($"Navigate:{route}", ex);
+            DiagLog.Add($"[NAV] -> {route} fail {HomeMs():F0}ms {ex.GetType().Name}");
         }
 
         await Task.Delay(250);
@@ -979,6 +995,7 @@ public partial class MainPage : ContentPage
         try
         {
             await Shell.Current.GoToAsync(route);
+            DiagLog.Add($"[NAV] -> {route} retry ok {HomeMs():F0}ms");
         }
         catch (Exception retry)
         {
@@ -1045,7 +1062,11 @@ public partial class MainPage : ContentPage
     private void OnGiftsTapped(object? sender, EventArgs e) => ActivateTile(0);
     private void OnExportTapped(object? sender, EventArgs e) => ActivateTile(1);
     private void OnBankTapped(object? sender, EventArgs e) => ActivateTile(2);
-    private void OnDexTapped(object? sender, EventArgs e) => ActivateTile(3);
+    private void OnDexTapped(object? sender, EventArgs e)
+    {
+        DiagLog.Add($"[HOME] dex tap {HomeMs():F0}ms");
+        ActivateTile(3);
+    }
 
     // ── Action bar highlight ─────────────────────────────────────────────────
 
