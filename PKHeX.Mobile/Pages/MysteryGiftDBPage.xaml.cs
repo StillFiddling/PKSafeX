@@ -236,22 +236,67 @@ public partial class MysteryGiftDBPage : ContentPage
         var dest = await DisplayActionSheetAsync("导入到", "取消", null, "箱子", "银行");
         if (dest is null || dest == "取消") return;
 
-        var pk = gift.ConvertToPKM(sav);
-        sav.AdaptToSaveFile(pk);
-
         if (dest == "箱子")
         {
-            if (!TryFindEmptyBoxSlot(sav, out int targetBox, out int targetSlot))
+            // 先只读地确认有空位，避免白跑一次写入
+            if (!TryFindEmptyBoxSlot(sav, out _, out _))
             {
                 await DisplayAlertAsync("空间不足", "所有箱子都满了，可以先清出空格或改存银行。", "OK");
                 return;
             }
 
-            sav.SetBoxSlotAtIndex(pk, targetBox, targetSlot);
-            await DisplayAlertAsync("完成",
-                $"已放入 箱子 {targetBox + 1} · 第 {targetSlot + 1} 格。\n记得到首页保存存档。", "OK");
+            int writeBox = -1, writeSlot = -1;
+            try
+            {
+                // 与「取出/存入银行」同一通道：先应用改动，再安全写回原存档文件。
+                // 若磁盘已被游戏更新，本次改动会被重放到最新副本上，不覆盖游戏进度。
+                var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
+                {
+                    if (!TryFindEmptyBoxSlot(s, out var b, out var sl)) return;
+
+                    var fresh = gift.ConvertToPKM(s);
+                    s.AdaptToSaveFile(fresh);
+                    s.SetBoxSlotAtIndex(fresh, b, sl);
+
+                    writeBox  = b;
+                    writeSlot = sl;
+                });
+
+                switch (result)
+                {
+                    case SaveWriteResult.Written:
+                        await DisplayAlertAsync("完成",
+                            $"已放入 箱子 {writeBox + 1} · 第 {writeSlot + 1} 格，存档已写入。", "OK");
+                        break;
+
+                    case SaveWriteResult.MergedIntoLatest:
+                        await DisplayAlertAsync("已写入（含并最新进度）",
+                            "检测到你在游戏里已经保存过比软件更新的存档。\n" +
+                            $"本次只把这一格合并进最新存档：箱子 {writeBox + 1} · 第 {writeSlot + 1} 格。", "OK");
+                        break;
+
+                    case SaveWriteResult.NoUri:
+                        await DisplayAlertAsync("无法写入",
+                            "找不到原存档文件位置（可能是从压缩包加载的存档）。\n请在首页导出存档后再导入礼物。", "OK");
+                        break;
+
+                    default:
+                        await DisplayAlertAsync("无法写入",
+                            "存档已被游戏更新且无法解析，请回首页重新加载存档后再试。", "OK");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlertAsync("写入失败，存档未改动", ex.Message, "OK");
+            }
+
             return;
         }
+
+        // 银行：Deposit 自身落盘，不需要再写回存档
+        var pk = gift.ConvertToPKM(sav);
+        sav.AdaptToSaveFile(pk);
 
         // 银行
         var bank = BankService.Instance;
