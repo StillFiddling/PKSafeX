@@ -198,6 +198,9 @@ public partial class MainPage : ContentPage
             ApplyMainPageLayout(dual, Width > Height);
         });
 
+        // 主线程卡顿探针：判断「点不动」到底是主线程被占，还是输入/导航本身丢失
+        DiagLog.StartWatchdog();
+
         // 先把上次扫描结果从磁盘缓存读出来：「重进软件」不再面对空白等好几分钟
         bool usedCache = false;
         if (_session.LoadedSaves.Count == 0)
@@ -516,6 +519,8 @@ public partial class MainPage : ContentPage
 
     private void ApplySaveEntries(List<SaveEntry> entries)
     {
+        var t0 = Stopwatch.GetTimestamp();
+        DiagLog.Add($"[HOME] apply start {entries.Count} 个");
         _saveCards = entries.Select(e => new SaveCardViewModel(e)).ToList();
         SaveCardsList.ItemsSource = _saveCards;
         SaveCountLabel.Text = $"{_saveCards.Count} 个存档";
@@ -557,6 +562,7 @@ public partial class MainPage : ContentPage
         UpdateHeroPreview();
         UpdateActionHighlight();
         _secondary.ShowMainMenu(_saveCards.Cast<object>().ToList(), _cardCursor);
+        DiagLog.Add($"[HOME] apply done {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0}ms");
     }
 
     /// <summary>

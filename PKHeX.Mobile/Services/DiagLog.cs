@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace PKHeX.Mobile.Services;
 
@@ -11,6 +13,7 @@ public static class DiagLog
 {
     private static readonly List<string> _lines = new();
     private const int MaxLines = 300;
+    private static bool _watchdogStarted;
 
     public static int Count => _lines.Count;
 
@@ -20,6 +23,33 @@ public static class DiagLog
         _lines.Add(entry);
         if (_lines.Count > MaxLines) _lines.RemoveAt(0);
         Console.WriteLine("[LAYOUT] " + entry);
+    }
+
+    /// <summary>
+    /// 主线程卡顿探针：后台线程每 250ms 往主线程投一个空回调，
+    /// 量出这次回调实际等了多久。>220ms 说明主线程当时被同步工作占住。
+    /// </summary>
+    public static void StartWatchdog()
+    {
+        if (_watchdogStarted) return;
+        _watchdogStarted = true;
+        var sw = Stopwatch.StartNew();
+        Task.Run(async () =>
+        {
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(250);
+                    long t0 = sw.ElapsedMilliseconds;
+                    await MainThread.InvokeOnMainThreadAsync(() => { });
+                    long lag = sw.ElapsedMilliseconds - t0;
+                    if (lag > 220)
+                        Add($"[LAG] 主线程阻塞 {lag}ms（进入后 +{t0 / 1000.0:F1}s）");
+                }
+                catch { await Task.Delay(500); }
+            }
+        });
     }
 
     /// <summary>把缓冲拼成整段文本（含设备信息抬头），供复制到剪贴板或写成文件。</summary>

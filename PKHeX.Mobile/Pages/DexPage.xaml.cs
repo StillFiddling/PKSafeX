@@ -200,15 +200,18 @@ public partial class DexPage : ContentPage
 
         try
         {
-            // 第一段：离线，纯本地
+            // 第一段：离线，纯本地。解码 PNG 是同步 CPU 活，必须丢后台，
+            // 否则 1000+ 张图会在主线程上分块跑好几秒（进图鉴后点不动就是这么来的）。
             for (int start = 0; start < TotalSpecies; start += 30)
             {
                 if (ct.IsCancellationRequested) return;
                 int count = Math.Min(30, TotalSpecies - start);
                 var batch = _speciesPks[start..(start + count)].Cast<PKM>().ToArray();
-                await _renderer.PreloadLocalAsync(batch, ct);
-                DexCanvas.InvalidateSurface();
+                await Task.Run(async () => await _renderer.PreloadLocalAsync(batch, ct), ct);
+                if (ct.IsCancellationRequested) return;
+                if (start % 150 == 0) DexCanvas.InvalidateSurface();
             }
+            DexCanvas.InvalidateSurface();
 
             // 第二段：后台补网（失败无所谓，本地图已经显示了）
             for (int start = 0; start < TotalSpecies; start += 30)
@@ -216,11 +219,12 @@ public partial class DexPage : ContentPage
                 if (ct.IsCancellationRequested) return;
                 int count = Math.Min(30, TotalSpecies - start);
                 var batch = _speciesPks[start..(start + count)].Cast<PKM>().ToArray();
-                try { await _renderer.PreloadBoxAsync(batch); } catch { }
+                try { await Task.Run(async () => await _renderer.PreloadBoxAsync(batch), ct); } catch { }
                 if (ct.IsCancellationRequested) return;
-                DexCanvas.InvalidateSurface();
+                if (start % 150 == 0) DexCanvas.InvalidateSurface();
                 await Task.Delay(120, ct);
             }
+            DexCanvas.InvalidateSurface();
         }
         catch (OperationCanceledException) { /* 离开页面，正常结束 */ }
         catch { /* 预加载失败不影响浏览 */ }
