@@ -3,6 +3,7 @@ using Android.Content;
 using Android.Content.PM;
 using Android.Views;
 using AndroidX.Core.View;
+using PKHeX.Mobile.Platforms.Android;
 using PKHeX.Mobile.Services;
 
 namespace PKHeX.Mobile;
@@ -27,6 +28,8 @@ public class MainActivity : MauiAppCompatActivity
         base.OnCreate(savedInstanceState);
         // 音量键明确调「媒体音量」，避免个别 ROM 默认落到铃身上，看着像按了没反应
         VolumeControlStream = Android.Media.Stream.Music;
+        // 屏幕方向由设置页的三态开关决定（默认强制竖屏），这里只负责按偏好应用一次
+        ScreenOrientationService.ApplySaved();
         SetImmersiveMode();
         // 等 Shell 自己的返回回调注册完成后再加，保证我们排在最前面（后注册优先）
         Window?.DecorView?.Post(InstallBackCallback);

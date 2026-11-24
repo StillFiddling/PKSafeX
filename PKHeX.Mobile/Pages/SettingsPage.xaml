@@ -34,6 +34,27 @@
 
             <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
 
+            <!-- Screen orientation (3-state) -->
+            <Border x:Name="Row_Orientation" StyleId="Pick:Orientation"
+                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
+                    StrokeShape="RoundRectangle 6" Padding="12,10">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="屏幕方向"
+                           FontAttributes="Bold" FontSize="15"
+                           TextColor="{DynamicResource ThTextPrimary}" />
+                    <Label Text="默认强制竖屏。手机系统里那个旋转开关会被本应用覆盖——想让它听系统的话，选「跟随系统」。"
+                           FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
+                    <Picker x:Name="OrientationPicker"
+                            SelectedIndexChanged="OnOrientationChanged"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource ThTextPrimary}" />
+                    <Label Text="强制横屏在横屏双栏页完工前仅供测试，现有页面会错位；平板、掌机等大屏设备受系统策略限制可能不生效。"
+                           FontSize="11" TextColor="{DynamicResource ThTextDim}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
+
             <!-- Shiny sprites -->
             <Border x:Name="Row_Shiny" StyleId="Toggle"
                     BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"

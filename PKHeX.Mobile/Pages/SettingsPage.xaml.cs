@@ -23,6 +23,10 @@ public partial class SettingsPage : ContentPage
     private static readonly string[] LanguageCodes = ["ja", "en", "fr", "it", "de", "es", "es-419", "ko", "zh-Hans", "zh-Hant"];
     private static readonly string[] LanguageNames = ["日本語", "English", "Français", "Italiano", "Deutsch", "Español", "Español (LATAM)", "한국어", "中文 (简)", "中文 (繁)"];
 
+    /// <summary>屏幕方向三态，顺序即 Picker 顺序。</summary>
+    private static readonly string[] OrientationModes = ["auto", "portrait", "landscape"];
+    private static readonly string[] OrientationNames = ["跟随系统", "强制竖屏", "强制横屏"];
+
     private bool _loading;
     private int _focusRow = 0;
     private Border[] _rows = [];
@@ -52,6 +56,9 @@ public partial class SettingsPage : ContentPage
             LanguagePicker.Items.Add(
                 LanguageCodes[i] == SupportedLanguage ? name : name + "（暂未支持）");
         }
+
+        foreach (var name in OrientationNames)
+            OrientationPicker.Items.Add(name);
     }
 
     protected override void OnAppearing()
@@ -66,6 +73,14 @@ public partial class SettingsPage : ContentPage
         var lang = Preferences.Default.Get(KeyLanguage, SupportedLanguage);
         var idx = Array.IndexOf(LanguageCodes, lang);
         LanguagePicker.SelectedIndex = idx >= 0 ? idx : Array.IndexOf(LanguageCodes, SupportedLanguage);
+
+#if ANDROID
+        var orient = Array.IndexOf(OrientationModes,
+            Platforms.Android.ScreenOrientationService.Current);
+        OrientationPicker.SelectedIndex = orient >= 0
+            ? orient
+            : Array.IndexOf(OrientationModes, Platforms.Android.ScreenOrientationService.DefaultMode);
+#endif
 
         ShinySwitch.IsToggled         = Preferences.Default.Get(KeyShinySprites, true);
         Animated3DSwitch.IsToggled    = Preferences.Default.Get(KeyAnimated3D, true);
@@ -94,7 +109,7 @@ public partial class SettingsPage : ContentPage
 
     private void BuildRows()
     {
-        _rows = [Row_Language, Row_Shiny, Row_Radar, Row_Folders, Row_AutoScan,
+        _rows = [Row_Language, Row_Orientation, Row_Shiny, Row_Radar, Row_Folders, Row_AutoScan,
                  Row_Legality, Row_Theme, Row_HeroBg, Row_Animated3D, Row_Sprites, Row_AnimSprites,
                  Row_ExportDiag, Row_DiagSwitch, Row_SaveBackup];
     }
@@ -195,13 +210,17 @@ public partial class SettingsPage : ContentPage
                 LanguagePicker.SelectedIndex = Math.Clamp(LanguagePicker.SelectedIndex + delta, 0, count - 1);
                 break;
 
-            case 1:  SetToggle(ShinySwitch,         delta); break;
-            case 2:  SetToggle(RadarAdaptiveSwitch, delta); break;
-            case 4:  SetToggle(AutoScanSwitch,      delta); break;
-            case 5:  SetToggle(LegalitySwitch,      delta); break;
-            case 6:  SetToggle(ThemeSwitch,         delta); break;
-            case 7:  SetToggle(MoireSwitch,         delta); break;
-            case 8:  SetToggle(Animated3DSwitch,    delta); break;
+            case 1: // 屏幕方向 — 三态，◀▶ 逐档切换
+                CycleOrientation(delta);
+                break;
+
+            case 2:  SetToggle(ShinySwitch,         delta); break;
+            case 3:  SetToggle(RadarAdaptiveSwitch, delta); break;
+            case 5:  SetToggle(AutoScanSwitch,      delta); break;
+            case 6:  SetToggle(LegalitySwitch,      delta); break;
+            case 7:  SetToggle(ThemeSwitch,         delta); break;
+            case 8:  SetToggle(MoireSwitch,         delta); break;
+            case 9:  SetToggle(Animated3DSwitch,    delta); break;
         }
 
         static void SetToggle(Switch sw, int delta)
@@ -210,6 +229,15 @@ public partial class SettingsPage : ContentPage
             if (delta > 0 && !sw.IsToggled) sw.IsToggled = true;
             else if (delta < 0 && sw.IsToggled) sw.IsToggled = false;
         }
+    }
+
+    /// <summary>在当前三态里往前走/往后走一格（真循环，两端能接上）。</summary>
+    private void CycleOrientation(int delta)
+    {
+        int count = OrientationPicker.Items.Count;
+        if (count == 0) return;
+        int cur = OrientationPicker.SelectedIndex < 0 ? 0 : OrientationPicker.SelectedIndex;
+        OrientationPicker.SelectedIndex = ((cur + delta) % count + count) % count;
     }
 
     private void ActivateRow()
@@ -222,46 +250,62 @@ public partial class SettingsPage : ContentPage
                     LanguagePicker.SelectedIndex = (LanguagePicker.SelectedIndex + 1) % count;
                 break;
             case 1:
-                ShinySwitch.IsToggled = !ShinySwitch.IsToggled;
+                CycleOrientation(+1);
                 break;
             case 2:
-                RadarAdaptiveSwitch.IsToggled = !RadarAdaptiveSwitch.IsToggled;
+                ShinySwitch.IsToggled = !ShinySwitch.IsToggled;
                 break;
             case 3:
-                _ = Shell.Current.GoToAsync(nameof(FolderManagerPage));
+                RadarAdaptiveSwitch.IsToggled = !RadarAdaptiveSwitch.IsToggled;
                 break;
             case 4:
-                AutoScanSwitch.IsToggled = !AutoScanSwitch.IsToggled;
+                _ = Shell.Current.GoToAsync(nameof(FolderManagerPage));
                 break;
             case 5:
-                LegalitySwitch.IsToggled = !LegalitySwitch.IsToggled;
+                AutoScanSwitch.IsToggled = !AutoScanSwitch.IsToggled;
                 break;
             case 6:
-                ThemeSwitch.IsToggled = !ThemeSwitch.IsToggled;
+                LegalitySwitch.IsToggled = !LegalitySwitch.IsToggled;
                 break;
             case 7:
-                MoireSwitch.IsToggled = !MoireSwitch.IsToggled;
+                ThemeSwitch.IsToggled = !ThemeSwitch.IsToggled;
                 break;
             case 8:
-                Animated3DSwitch.IsToggled = !Animated3DSwitch.IsToggled;
+                MoireSwitch.IsToggled = !MoireSwitch.IsToggled;
                 break;
             case 9:
-                _ = OpenSpriteSourcePage("home");
+                Animated3DSwitch.IsToggled = !Animated3DSwitch.IsToggled;
                 break;
             case 10:
-                _ = OpenSpriteSourcePage("anim");
+                _ = OpenSpriteSourcePage("home");
                 break;
             case 11:
-                _ = ExportDiagAsync();
+                _ = OpenSpriteSourcePage("anim");
                 break;
             case 12:
-                DiagSwitch.IsToggled = !DiagSwitch.IsToggled;
+                _ = ExportDiagAsync();
                 break;
             case 13:
+                DiagSwitch.IsToggled = !DiagSwitch.IsToggled;
+                break;
+            case 14:
                 _ = ShowBackupInfoAsync();
                 break;
         }
     }
+
+#if ANDROID
+    /// <summary>
+    /// 选了就立刻生效：写偏好 + 改 RequestedOrientation，不用重启。
+    /// 「跟随系统」这一档在部分 ROM 上会把玩家自己的旋转锁重新读回来，属预期。
+    /// </summary>
+    private void OnOrientationChanged(object sender, EventArgs e)
+    {
+        if (_loading || OrientationPicker.SelectedIndex < 0) return;
+        var mode = OrientationModes[OrientationPicker.SelectedIndex];
+        Platforms.Android.ScreenOrientationService.Set(mode);
+    }
+#endif
 
     private void OnDiagSwitchToggled(object? sender, ToggledEventArgs e)
     {
