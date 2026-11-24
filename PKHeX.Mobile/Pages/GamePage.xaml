@@ -632,6 +632,16 @@
                                 <Label Text="存入银行" FontFamily="NunitoBold" FontSize="9"
                                        TextColor="#8FB7FF"/>
                             </Border>
+                            <Border x:Name="PhoneSheetReleaseBtn" StrokeShape="RoundRectangle 6"
+                                    BackgroundColor="#2A1B20"
+                                    Stroke="#7A4A55" StrokeThickness="1"
+                                    Padding="6,3">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnPhoneSheetReleaseTapped"/>
+                                </Border.GestureRecognizers>
+                                <Label Text="放生" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="#FF9AA8"/>
+                            </Border>
                         </VerticalStackLayout>
                     </Grid>
 
