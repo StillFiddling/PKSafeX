@@ -17,7 +17,10 @@ namespace PKHeX.Mobile;
         ConfigChanges.UiMode |
         ConfigChanges.ScreenLayout |
         ConfigChanges.SmallestScreenSize |
-        ConfigChanges.Density)]
+        ConfigChanges.Density,
+    // 锁竖屏：清单里会写成 android:screenOrientation="portrait"，
+    // 系统怎么设旋转开关都翻不过来。以后做横屏适配时改成 FullUser。
+    ScreenOrientation = Android.Content.PM.ScreenOrientation.Portrait)]
 public class MainActivity : MauiAppCompatActivity
 {
     public const int RequestPickDirectory = 9001;
@@ -25,6 +28,8 @@ public class MainActivity : MauiAppCompatActivity
     protected override void OnCreate(Android.OS.Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        // 音量键明确调「媒体音量」，避免个别 ROM 默认落到铃身上，看着像按了没反应
+        VolumeControlStream = Android.Media.Stream.Music;
         SetImmersiveMode();
         // 等 Shell 自己的返回回调注册完成后再加，保证我们排在最前面（后注册优先）
         Window?.DecorView?.Post(InstallBackCallback);
@@ -118,10 +123,27 @@ public class MainActivity : MauiAppCompatActivity
     // ── Key events (digital buttons + digital D-pad) ──────────────────────
     public override bool DispatchKeyEvent(KeyEvent? e)
     {
-        if (e is not null
-            && (e.Source & (InputSourceType.Gamepad | InputSourceType.Joystick)) != 0
-            && GamepadRouter.Dispatch(e.KeyCode, e.Action))
-            return true;
+        if (e is not null)
+        {
+            // 音量/静音键一律交回系统，任何页面都不许吞。
+            // 之前这里只按 source 判断手柄/摇杆，有些 ROM 会把侧键带上 JOYSTICK 位，
+            // 于是音量键被判成手柄键、被 GamepadRouter 无条件消费，表现为按了没反应。
+            if (e.KeyCode is Keycode.VolumeUp or Keycode.VolumeDown or Keycode.VolumeMute)
+            {
+                DiagLog.Add($"[KEY] volume {e.KeyCode} src={(int)e.Source} act={e.Action} -> 交给系统");
+                return base.DispatchKeyEvent(e);
+            }
+
+            if ((e.Source & (InputSourceType.Gamepad | InputSourceType.Joystick)) != 0)
+            {
+                bool handled = GamepadRouter.Dispatch(e.KeyCode, e.Action);
+                if (handled)
+                    DiagLog.Add($"[KEY] consumed {e.KeyCode} src={(int)e.Source} act={e.Action}");
+                else
+                    DiagLog.Add($"[KEY] gamepad-no-handler {e.KeyCode} src={(int)e.Source}");
+                if (handled) return true;
+            }
+        }
 
         return base.DispatchKeyEvent(e);
     }
