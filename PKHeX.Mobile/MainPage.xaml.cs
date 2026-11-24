@@ -406,11 +406,12 @@ public partial class MainPage : ContentPage
 
             if (!CrashLog.HasLog) return;
 
-            var log = CrashLog.ReadLast();
+            // 对外测试版：不把原始堆栈糊到玩家脸上，只说明已记录、怎么反馈。
             bool clear = await DisplayAlertAsync(
-                "上次运行出现异常",
-                $"{log}\n\n点「清除记录」可关闭此提示。",
-                "关闭", "清除记录");
+                "上次退出不太正常",
+                "上次运行可能异常结束，相关信息已记录下来（不影响存档）。\n\n"
+                + "如果之后遇到卡顿或闪退，可以在设置里打开「诊断记录」，再点「导出布局日志」发给作者。",
+                "知道了", "清除这条记录");
             if (clear) CrashLog.Clear();
         }
         catch (Exception ex)

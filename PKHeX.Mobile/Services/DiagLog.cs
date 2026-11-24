@@ -14,11 +14,25 @@ public static class DiagLog
     private static readonly List<string> _lines = new();
     private const int MaxLines = 300;
     private static bool _watchdogStarted;
+    private static bool? _enabled;
+
+    /// <summary>诊断记录开关，默认关闭；设置页打开后才开始记录（正式版不占用性能）。</summary>
+    public static bool Enabled
+    {
+        get => _enabled ??= Preferences.Default.Get("diag_enabled", false);
+        set
+        {
+            _enabled = value;
+            Preferences.Default.Set("diag_enabled", value);
+            if (value) StartWatchdog();
+        }
+    }
 
     public static int Count => _lines.Count;
 
     public static void Add(string line)
     {
+        if (!Enabled) return;
         var entry = $"{DateTime.Now:HH:mm:ss.fff} {line}";
         _lines.Add(entry);
         if (_lines.Count > MaxLines) _lines.RemoveAt(0);
@@ -28,10 +42,11 @@ public static class DiagLog
     /// <summary>
     /// 主线程卡顿探针：后台线程每 250ms 往主线程投一个空回调，
     /// 量出这次回调实际等了多久。>220ms 说明主线程当时被同步工作占住。
+    /// 只有诊断开关打开时才运行。
     /// </summary>
     public static void StartWatchdog()
     {
-        if (_watchdogStarted) return;
+        if (_watchdogStarted || !Enabled) return;
         _watchdogStarted = true;
         var sw = Stopwatch.StartNew();
         Task.Run(async () =>

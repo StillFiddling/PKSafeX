@@ -34,6 +34,35 @@ public partial class MysteryGiftDBPage : ContentPage
         if (_all.Count == 0)
             BuildIndex();
         ApplyFilter();
+        UpdateSupportBanner();
+    }
+
+    /// <summary>
+    /// 提前把「当前存档不支持接收」讲清楚，别等点了确认才说暂不支持。
+    /// Gen8/9 没有实现礼物槽写入接口，只能浏览。
+    /// </summary>
+    private void UpdateSupportBanner()
+    {
+        var sav = _session.ActiveSave;
+        if (sav is null)
+        {
+            SupportBanner.IsVisible = true;
+            SupportBannerLabel.Text = "还没加载存档：回首页选一个存档后再来，才能接收礼物。";
+            return;
+        }
+
+        if (sav is IMysteryGiftStorageProvider)
+        {
+            SupportBanner.IsVisible = false;
+            return;
+        }
+
+        int gen = 0;
+        try { gen = sav.Generation; } catch { }
+        SupportBanner.IsVisible = true;
+        SupportBannerLabel.Text = gen > 0
+            ? $"当前存档是第 {gen} 世代，没有可写入的礼物槽，这里只能浏览卡片。剑/盾、晶灿钻石·明亮珍珠、传说 阿尔宙斯、朱/紫 暂不支持接收礼物。"
+            : "当前存档没有可写入的礼物槽，这里只能浏览卡片。剑/盾、朱/紫 等新世代暂不支持接收礼物。";
     }
 
     private void UpdateLibraryBar()

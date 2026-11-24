@@ -74,12 +74,14 @@ public partial class SettingsPage : ContentPage
         ThemeSwitch.IsToggled         = ThemeService.Current == PkTheme.Light;
         MoireSwitch.IsToggled         = Preferences.Default.Get(KeyMoireBg, true);
         AutoScanSwitch.IsToggled      = Preferences.Default.Get(KeyAutoScanAll, false);
+        DiagSwitch.IsToggled          = DiagLog.Enabled;
 
         _loading = false;
 
         BuildRows();
         UpdateHighlight();
         UpdateSpriteSummaries();
+        UpdateBackupSummary();
     }
 
     protected override void OnDisappearing()
@@ -94,7 +96,7 @@ public partial class SettingsPage : ContentPage
     {
         _rows = [Row_Language, Row_Shiny, Row_Radar, Row_Folders, Row_AutoScan,
                  Row_Legality, Row_Theme, Row_HeroBg, Row_Animated3D, Row_Sprites, Row_AnimSprites,
-                 Row_ExportDiag];
+                 Row_ExportDiag, Row_DiagSwitch, Row_SaveBackup];
     }
 
     /// <summary>两行入口各显示一行缓存概况，具体操作在二级页完成。</summary>
@@ -252,7 +254,42 @@ public partial class SettingsPage : ContentPage
             case 11:
                 _ = ExportDiagAsync();
                 break;
+            case 12:
+                DiagSwitch.IsToggled = !DiagSwitch.IsToggled;
+                break;
+            case 13:
+                _ = ShowBackupInfoAsync();
+                break;
         }
+    }
+
+    private void OnDiagSwitchToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_loading) return;
+        DiagLog.Enabled = e.Value;
+    }
+
+    private async void OnSaveBackupTapped(object? sender, TappedEventArgs e)
+        => await ShowBackupInfoAsync();
+
+    private void UpdateBackupSummary()
+    {
+        int n = SaveBackupService.Count();
+        SaveBackupSummaryLabel.Text = n == 0
+            ? "每次写回存档前都会自动留一份，最多保留 20 份（目前还没有备份）"
+            : $"已保留 {n} 份备份 · 最近一次 {SaveBackupService.LastName}";
+    }
+
+    /// <summary>告诉玩家备份在哪、留了几份；不提供「一键恢复」（避免误覆盖）。</summary>
+    private async Task ShowBackupInfoAsync()
+    {
+        int n = SaveBackupService.Count();
+        var body = n == 0
+            ? "还没有备份。之后每次往存档写东西（存银行、放生、接收礼物）之前，都会自动留一份。"
+            : $"共 {n} 份，最多保留 20 份，超出后自动删最早的。\n\n"
+              + $"最近一次：{SaveBackupService.LastName}\n最早一次：{SaveBackupService.OldestName}\n\n"
+              + "备份放在应用私有目录里，不会污染模拟器的存档文件夹。";
+        await DisplayAlertAsync("存档备份", body, "好");
     }
 
     private async void OnExportDiagTapped(object? sender, TappedEventArgs e)
@@ -263,10 +300,17 @@ public partial class SettingsPage : ContentPage
     {
         try
         {
+            if (!DiagLog.Enabled)
+            {
+                await DisplayAlertAsync("诊断记录没开",
+                    "正式版默认不记录诊断。要反馈问题的话，先把下面「诊断记录」打开，再复现一次卡顿，然后回来点这里导出。", "好");
+                return;
+            }
+
             if (DiagLog.Count == 0)
             {
                 await DisplayAlertAsync("还没有日志",
-                    "请先进箱子页，再进银行页，然后按 B 返回箱子页，来回几次后再导出。", "好");
+                    "诊断已打开，但还没记录到内容。请复现一次卡顿（比如冷启动后立刻点图鉴），再回来导出。", "好");
                 return;
             }
 

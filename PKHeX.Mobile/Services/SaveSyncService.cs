@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using PKHeX.Core;
 
 namespace PKHeX.Mobile.Services;
@@ -78,6 +79,8 @@ public static class SaveSyncService
         if (!stale)
         {
             var bytes = sav.Write().ToArray();
+            if (disk is not null)
+                await Task.Run(() => SaveBackupService.Backup(session.ActiveSaveFileUri, session.ActiveSaveFileName, disk));
             await new FileService().WriteBackAsync(bytes, session.ActiveSaveFileUri);
             session.ActiveSaveFingerprint = Fingerprint(bytes);
             return SaveWriteResult.Written;
@@ -90,6 +93,7 @@ public static class SaveSyncService
 
         applyDelta(latest);
         var merged = latest.Write().ToArray();
+        await Task.Run(() => SaveBackupService.Backup(session.ActiveSaveFileUri, session.ActiveSaveFileName, copy));
         await new FileService().WriteBackAsync(merged, session.ActiveSaveFileUri);
 
         session.ActiveSave           = latest;
@@ -106,6 +110,9 @@ public static class SaveSyncService
         if (sav is null || string.IsNullOrEmpty(session.ActiveSaveFileUri)) return;
 
         var bytes = sav.Write().ToArray();
+        var disk = await ReadDiskBytesAsync(session);
+        if (disk is not null)
+            await Task.Run(() => SaveBackupService.Backup(session.ActiveSaveFileUri, session.ActiveSaveFileName, disk));
         await new FileService().WriteBackAsync(bytes, session.ActiveSaveFileUri);
         session.ActiveSaveFingerprint = Fingerprint(bytes);
     }

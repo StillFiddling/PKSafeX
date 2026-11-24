@@ -260,6 +260,51 @@
                 </Grid>
             </Border>
 
+            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
+
+            <!-- 诊断记录开关：默认关闭，反馈问题时再打开 -->
+            <Border x:Name="Row_DiagSwitch"
+                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
+                    StrokeShape="RoundRectangle 6" Padding="12,10">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <VerticalStackLayout Grid.Column="0" Spacing="4">
+                        <Label Text="诊断记录"
+                               FontAttributes="Bold" FontSize="15"
+                               TextColor="{DynamicResource ThTextPrimary}" />
+                        <Label Text="反馈卡顿/异常时打开，之后用上一行的「导出布局日志」发我；平时保持关闭不占性能"
+                               FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
+                    </VerticalStackLayout>
+                    <Switch Grid.Column="1" x:Name="DiagSwitch"
+                            OnColor="{DynamicResource ThAccent}"
+                            Toggled="OnDiagSwitchToggled"
+                            VerticalOptions="Center" />
+                </Grid>
+            </Border>
+
+            <BoxView HeightRequest="1" Color="{DynamicResource ThDivider}" />
+
+            <!-- 存档备份概况（每次写回前自动存一份到应用私有目录） -->
+            <Border x:Name="Row_SaveBackup"
+                    BackgroundColor="{DynamicResource ThSettingsRow}" Stroke="Transparent"
+                    StrokeShape="RoundRectangle 6" Padding="12,10">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSaveBackupTapped" />
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="*,Auto">
+                    <VerticalStackLayout Grid.Column="0" Spacing="4">
+                        <Label Text="存档备份"
+                               FontAttributes="Bold" FontSize="15"
+                               TextColor="{DynamicResource ThTextPrimary}" />
+                        <Label x:Name="SaveBackupSummaryLabel"
+                               Text="每次写回存档前都会自动留一份，最多保留 20 份"
+                               FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
+                    </VerticalStackLayout>
+                    <Label Grid.Column="1" Text="›" FontSize="20"
+                           TextColor="{DynamicResource ThTextDim}"
+                           VerticalOptions="Center" Margin="8,0,0,0" />
+                </Grid>
+            </Border>
+
             </VerticalStackLayout>
     </ScrollView>
 
