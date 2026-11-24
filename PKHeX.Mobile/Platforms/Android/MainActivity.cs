@@ -17,10 +17,7 @@ namespace PKHeX.Mobile;
         ConfigChanges.UiMode |
         ConfigChanges.ScreenLayout |
         ConfigChanges.SmallestScreenSize |
-        ConfigChanges.Density,
-    // 锁竖屏：清单里会写成 android:screenOrientation="portrait"，
-    // 系统怎么设旋转开关都翻不过来。以后做横屏适配时改成 FullUser。
-    ScreenOrientation = Android.Content.PM.ScreenOrientation.Portrait)]
+        ConfigChanges.Density)]
 public class MainActivity : MauiAppCompatActivity
 {
     public const int RequestPickDirectory = 9001;
