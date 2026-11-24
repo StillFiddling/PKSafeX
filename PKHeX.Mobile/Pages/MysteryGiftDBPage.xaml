@@ -5,7 +5,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{DynamicResource ThPageBg}">
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*" BackgroundColor="{DynamicResource ThPageBg}">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" BackgroundColor="{DynamicResource ThPageBg}">
 
         <!-- Header -->
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto"
@@ -16,7 +16,7 @@
                    TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.5"
                    VerticalOptions="Center" />
             <Label Grid.Column="1"
-                   Text="↕ 上下  A 导入  B 返回"
+                   Text="↕ 上下  A 接收  B 返回"
                    FontFamily="Nunito" FontSize="9"
                    TextColor="{DynamicResource ThTextHint}"
                    VerticalOptions="Center" />
@@ -137,6 +137,51 @@
                        Margin="0,40,0,0" />
             </CollectionView.EmptyView>
         </CollectionView>
+
+        <!-- 底部：我接收的礼物 -->
+        <Border Grid.Row="4" Margin="14,6,14,10" Padding="14,10"
+                StrokeShape="RoundRectangle 10"
+                BackgroundColor="{DynamicResource ThHintBg}"
+                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnReceivedTapped" />
+            </Border.GestureRecognizers>
+            <Label Text="我接收的礼物" FontFamily="NunitoBold" FontSize="12"
+                   HorizontalOptions="Center"
+                   TextColor="{DynamicResource ThTextPrimary}" />
+        </Border>
+
+        <!-- 礼物槽列表浮层 -->
+        <Grid x:Name="ReceivedOverlay" Grid.RowSpan="5" IsVisible="False"
+              BackgroundColor="#B3000000">
+            <Border VerticalOptions="End" StrokeShape="RoundRectangle 16,16,0,0"
+                    BackgroundColor="{DynamicResource ThCardBg}"
+                    Stroke="{DynamicResource ThDivider}" StrokeThickness="1"
+                    Padding="16,14">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label x:Name="ReceivedTitle" FontFamily="NunitoExtraBold" FontSize="14"
+                               TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center" />
+                        <Border Grid.Column="1" StrokeShape="RoundRectangle 8" Padding="8,2"
+                                BackgroundColor="{DynamicResource ThHintBg}"
+                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnReceivedCloseTapped" />
+                            </Border.GestureRecognizers>
+                            <Label Text="✕" FontFamily="NunitoBold" FontSize="12"
+                                   TextColor="{DynamicResource ThTextSecondary}" />
+                        </Border>
+                    </Grid>
+
+                    <ScrollView MaximumHeightRequest="420">
+                        <VerticalStackLayout x:Name="ReceivedList" Spacing="6" />
+                    </ScrollView>
+
+                    <Label x:Name="ReceivedHint" FontFamily="Nunito" FontSize="10"
+                           TextColor="{DynamicResource ThTextDim}" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
 
     </Grid>
 </ContentPage>

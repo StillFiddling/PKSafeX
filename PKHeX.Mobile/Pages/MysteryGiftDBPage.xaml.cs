@@ -86,6 +86,13 @@ public partial class MysteryGiftDBPage : ContentPage
 
     private void HandleGamepadKey(Android.Views.Keycode keyCode)
     {
+        if (ReceivedOverlay.IsVisible)
+        {
+            if (keyCode == Android.Views.Keycode.ButtonB)
+                ReceivedOverlay.IsVisible = false;
+            return;
+        }
+
         switch (keyCode)
         {
             case Android.Views.Keycode.ButtonB:
@@ -207,177 +214,320 @@ public partial class MysteryGiftDBPage : ContentPage
         var sav = _session.ActiveSave;
         if (sav is null)
         {
-            await DisplayAlertAsync("没有存档", "请先在首页加载一个存档，再来导入礼物。", "OK");
-            return;
-        }
-
-        if (!entry.Gift.IsCardCompatible(sav, out var reason))
-        {
-            await DisplayAlertAsync("不兼容", reason, "OK");
+            await DisplayAlertAsync("没有存档", "请先在首页加载一个存档，再来接收礼物。", "OK");
             return;
         }
 
         var gift = entry.Gift;
+        var detail = BuildGiftDetail(gift);
 
-        if (!gift.IsEntity || gift.Species <= 0)
+        // 只有「数据卡」（直接来自 .wc7/.pcd 等文件）才能写进礼物槽
+        if (gift is not DataMysteryGift dataGift)
         {
-            await DisplayAlertAsync("只支持宝可梦礼物",
-                "这张是道具礼物，当前版本还不能把道具写进存档。\n请选择宝可梦礼物卡。", "OK");
+            await DisplayAlertAsync("无法写入", detail + "\n这一类卡片没有可写入的原始数据，暂时不能写进礼物槽。", "OK");
             return;
         }
 
-        var detail = BuildGiftDetail(gift);
-        if (FindExistingCopy(gift, sav, out var where))
-            detail += $"\n\n提示：{where} 已有一份同样的礼物宝可梦。";
+        // 第八/九世代没有可写礼物槽
+        if (!TryGetStorage(sav, out var storage, out var slotError))
+        {
+            await DisplayAlertAsync(gift.CardTitle, detail + "\n\n" + slotError, "OK");
+            return;
+        }
 
-        var confirm = await DisplayAlertAsync(gift.CardTitle, detail, "选择位置", "取消");
+        if (!CardTypeSupported(storage, dataGift, out var expected))
+        {
+            await DisplayAlertAsync("卡片格式不匹配",
+                $"{detail}\n这张卡是 {gift.GetType().Name} 格式，当前存档的礼物槽只接受 {expected}。\n跨世代的卡不能直接写入礼物槽。",
+                "OK");
+            return;
+        }
+
+        int freeSlot = FindEmptyGiftSlot(storage);
+        if (freeSlot < 0)
+        {
+            await DisplayAlertAsync("礼物槽已满",
+                "当前存档的礼物槽已经装满。\n可以先在「我接收的礼物」里删掉不需要的卡，再来接收。", "OK");
+            return;
+        }
+
+        if (GiftAlreadyPresent(storage, gift, out var existingIndex))
+            detail += $"\n\n提示：礼物槽第 {existingIndex + 1} 格里已经有这张卡。";
+
+        var confirm = await DisplayAlertAsync(gift.CardTitle,
+            detail +
+            $"\n\n接收后会写入礼物槽第 {freeSlot + 1} 格。\n回游戏里打开神秘礼物 / 找配信员领取，宝可梦由游戏生成。",
+            "接收礼物", "取消");
         if (!confirm) return;
 
-        var dest = await DisplayActionSheetAsync("导入到", "取消", null, "箱子", "银行");
-        if (dest is null || dest == "取消") return;
-
-        if (dest == "箱子")
+        int writtenSlot = -1;
+        try
         {
-            // 先只读地确认有空位，避免白跑一次写入
-            if (!TryFindEmptyBoxSlot(sav, out _, out _))
+            var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
             {
-                await DisplayAlertAsync("空间不足", "所有箱子都满了，可以先清出空格或改存银行。", "OK");
-                return;
-            }
+                if (s is not IMysteryGiftStorageProvider provider) return;
+                var st = provider.MysteryGiftStorage;
 
-            int writeBox = -1, writeSlot = -1;
-            try
+                int idx = FindEmptyGiftSlot(st);
+                if (idx < 0) return;
+
+                st.SetMysteryGift(idx, dataGift);
+                ClearReceivedFlag(st, gift);
+                if (st is MysteryBlock4 gen4)
+                    gen4.IsDeliveryManActive = true; // 四代要手动点亮配信员
+
+                writtenSlot = idx;
+            });
+
+            switch (result)
             {
-                // 与「取出/存入银行」同一通道：先应用改动，再安全写回原存档文件。
-                // 若磁盘已被游戏更新，本次改动会被重放到最新副本上，不覆盖游戏进度。
-                var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
-                {
-                    if (!TryFindEmptyBoxSlot(s, out var b, out var sl)) return;
+                case SaveWriteResult.Written when writtenSlot >= 0:
+                    await DisplayAlertAsync("已接收",
+                        $"已写入礼物槽第 {writtenSlot + 1} 格，存档已保存。\n回游戏里打开神秘礼物 / 找配信员领取。",
+                        "OK");
+                    break;
 
-                    var fresh = gift.ConvertToPKM(s);
-                    s.AdaptToSaveFile(fresh);
-                    s.SetBoxSlotAtIndex(fresh, b, sl);
+                case SaveWriteResult.MergedIntoLatest when writtenSlot >= 0:
+                    await DisplayAlertAsync("已接收（含并最新进度）",
+                        "检测到你在游戏里已经保存过比软件更新的存档。\n" +
+                        $"本次只把「礼物槽第 {writtenSlot + 1} 格」合并进最新存档，其它进度没有被覆盖。\n回游戏里领取即可。",
+                        "OK");
+                    break;
 
-                    writeBox  = b;
-                    writeSlot = sl;
-                });
+                case SaveWriteResult.NoUri:
+                    await DisplayAlertAsync("无法写入",
+                        "找不到原存档文件位置（可能是从压缩包加载的存档）。\n请在首页导出存档后再试。", "OK");
+                    break;
 
-                switch (result)
-                {
-                    case SaveWriteResult.Written:
-                        await DisplayAlertAsync("完成",
-                            $"已放入 箱子 {writeBox + 1} · 第 {writeSlot + 1} 格，存档已写入。", "OK");
-                        break;
-
-                    case SaveWriteResult.MergedIntoLatest:
-                        await DisplayAlertAsync("已写入（含并最新进度）",
-                            "检测到你在游戏里已经保存过比软件更新的存档。\n" +
-                            $"本次只把这一格合并进最新存档：箱子 {writeBox + 1} · 第 {writeSlot + 1} 格。", "OK");
-                        break;
-
-                    case SaveWriteResult.NoUri:
-                        await DisplayAlertAsync("无法写入",
-                            "找不到原存档文件位置（可能是从压缩包加载的存档）。\n请在首页导出存档后再导入礼物。", "OK");
-                        break;
-
-                    default:
-                        await DisplayAlertAsync("无法写入",
-                            "存档已被游戏更新且无法解析，请回首页重新加载存档后再试。", "OK");
-                        break;
-                }
+                default:
+                    await DisplayAlertAsync("无法写入",
+                        "存档已被游戏更新且无法解析，或礼物槽已满。\n请回首页重新加载存档后再试。", "OK");
+                    break;
             }
-            catch (Exception ex)
-            {
-                await DisplayAlertAsync("写入失败，存档未改动", ex.Message, "OK");
-            }
-
-            return;
         }
-
-        // 银行：Deposit 自身落盘，不需要再写回存档
-        var pk = gift.ConvertToPKM(sav);
-        sav.AdaptToSaveFile(pk);
-
-        // 银行
-        var bank = BankService.Instance;
-        int bankBox = -1, bankSlot = -1;
-        for (int b = 0; b < bank.Boxes.Count; b++)
+        catch (Exception ex)
         {
-            int empty = bank.FindFirstEmpty(b);
-            if (empty >= 0) { bankBox = b; bankSlot = empty; break; }
+            await DisplayAlertAsync("接收失败，存档未改动", ex.Message, "OK");
         }
-        if (bankBox < 0)
-        {
-            bank.CreateBox($"Bank {bank.Boxes.Count + 1}");
-            bankBox  = bank.Boxes.Count - 1;
-            bankSlot = bank.FindFirstEmpty(bankBox);
-        }
-        if (bankBox < 0 || bankSlot < 0)
-        {
-            await DisplayAlertAsync("银行空间不足", "银行里没有可用空格。", "OK");
-            return;
-        }
-
-        bank.Deposit(bankBox, bankSlot, pk);
-        await DisplayAlertAsync("完成",
-            $"已存入 银行 第 {bankBox + 1} 箱 · 第 {bankSlot + 1} 格。", "OK");
     }
 
-    private static bool TryFindEmptyBoxSlot(SaveFile sav, out int box, out int slot)
+    // ──────────────────────────────────────────────
+    //  礼物槽读写
+    // ──────────────────────────────────────────────
+
+    private static bool TryGetStorage(SaveFile sav, out IMysteryGiftStorage storage, out string error)
     {
-        for (box = 0; box < sav.BoxCount; box++)
+        storage = null!;
+        error   = "";
+
+        if (sav is not IMysteryGiftStorageProvider provider)
         {
-            var data = sav.GetBoxData(box);
-            for (slot = 0; slot < data.Length; slot++)
-            {
-                if (data[slot].Species == 0) return true;
-            }
+            error = $"《{sav.Version}》这一代存档没有可写入的礼物槽（第八、九世代暂不支持）。";
+            return false;
         }
-        box = slot = -1;
+
+        storage = provider.MysteryGiftStorage;
+        return true;
+    }
+
+    private static bool CardTypeSupported(IMysteryGiftStorage storage, DataMysteryGift gift, out string expected)
+    {
+        var allowed = new HashSet<Type>();
+        for (int i = 0; i < storage.GiftCountMax; i++)
+            allowed.Add(storage.GetMysteryGift(i).GetType());
+
+        expected = string.Join(" / ", allowed.Select(t => t.Name));
+        return allowed.Contains(gift.GetType());
+    }
+
+    private static int FindEmptyGiftSlot(IMysteryGiftStorage storage)
+    {
+        for (int i = 0; i < storage.GiftCountMax; i++)
+        {
+            if (storage.GetMysteryGift(i).IsEmpty) return i;
+        }
+        return -1;
+    }
+
+    private static void ClearReceivedFlag(IMysteryGiftStorage storage, MysteryGift gift)
+    {
+        if (storage is not IMysteryGiftFlags flags) return;
+        if (gift.CardID <= 0 || gift.CardID >= flags.MysteryGiftReceivedFlagMax) return;
+        flags.SetMysteryGiftReceivedFlag(gift.CardID, false);
+    }
+
+    private static bool GiftAlreadyPresent(IMysteryGiftStorage storage, MysteryGift gift, out int index)
+    {
+        index = -1;
+        if (gift.CardID <= 0) return false;
+
+        for (int i = 0; i < storage.GiftCountMax; i++)
+        {
+            var card = storage.GetMysteryGift(i);
+            if (card.IsEmpty || card is not MysteryGift m) continue;
+            if (m.CardID != gift.CardID) continue;
+
+            index = i;
+            return true;
+        }
         return false;
     }
 
-    /// <summary>箱子里或银行里是否已经有同一张卡的产物（同种 + 同 OT + 同 ID）。</summary>
-    private static bool FindExistingCopy(MysteryGift gift, SaveFile sav, out string where)
+    // ──────────────────────────────────────────────
+    //  我接收的礼物
+    // ──────────────────────────────────────────────
+
+    private async void OnReceivedTapped(object? sender, TappedEventArgs e)
     {
-        where = "";
-
-        for (int b = 0; b < sav.BoxCount; b++)
+        var sav = _session.ActiveSave;
+        if (sav is null)
         {
-            var data = sav.GetBoxData(b);
-            for (int s = 0; s < data.Length; s++)
-            {
-                var pk = data[s];
-                if (pk.Species != gift.Species) continue;
-                if (pk.TID16 != gift.TID16 || pk.SID16 != gift.SID16) continue;
-                if (pk.OriginalTrainerName != gift.OriginalTrainerName) continue;
-
-                where = $"箱子 {b + 1} 第 {s + 1} 格";
-                return true;
-            }
+            await DisplayAlertAsync("没有存档", "请先在首页加载一个存档。", "OK");
+            return;
         }
 
-        var bank = BankService.Instance;
-        for (int b = 0; b < bank.Boxes.Count; b++)
+        if (!TryGetStorage(sav, out var storage, out var error))
         {
-            var slots = bank.Boxes[b].Slots;
-            for (int s = 0; s < slots.Count; s++)
-            {
-                var slot = slots[s];
-                if (slot is null || slot.Species != gift.Species) continue;
-
-                var pk = slot.ToPKM();
-                if (pk is null) continue;
-                if (pk.TID16 != gift.TID16 || pk.SID16 != gift.SID16) continue;
-                if (pk.OriginalTrainerName != gift.OriginalTrainerName) continue;
-
-                where = $"银行 第 {b + 1} 箱 第 {s + 1} 格";
-                return true;
-            }
+            await DisplayAlertAsync("暂不支持", error, "OK");
+            return;
         }
 
-        return false;
+        BuildReceivedRows(sav, storage);
+        ReceivedOverlay.IsVisible = true;
     }
+
+    private void OnReceivedCloseTapped(object? sender, TappedEventArgs e)
+        => ReceivedOverlay.IsVisible = false;
+
+    private void BuildReceivedRows(SaveFile sav, IMysteryGiftStorage storage)
+    {
+        ReceivedList.Children.Clear();
+
+        int count = 0;
+        for (int i = 0; i < storage.GiftCountMax; i++)
+        {
+            var card = storage.GetMysteryGift(i);
+            if (card.IsEmpty) continue;
+            count++;
+
+            string title, sub;
+            if (card is MysteryGift m)
+            {
+                title = m.CardHeader;
+                sub = m.IsEntity && m.Species > 0
+                    ? $"{SpeciesName(m.Species)} Lv.{m.Level} · Gen {m.Generation}"
+                    : $"道具礼物 · Gen {m.Generation}";
+            }
+            else
+            {
+                title = $"第 {i + 1} 格";
+                sub   = "无法识别的卡片";
+            }
+
+            int slotIndex = i;
+
+            var stack = new VerticalStackLayout { Spacing = 1 };
+            stack.Add(new Label
+            {
+                Text = $"{i + 1}. {title}",
+                FontFamily = "NunitoBold", FontSize = 11,
+                TextColor = Res("ThTextPrimary", "#EDF0FF"),
+                LineBreakMode = LineBreakMode.TailTruncation,
+            });
+            stack.Add(new Label
+            {
+                Text = sub,
+                FontFamily = "Nunito", FontSize = 10,
+                TextColor = Res("ThTextSecondary", "#8B97B0"),
+            });
+
+            var border = new Border
+            {
+                StrokeShape     = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 8 },
+                BackgroundColor = Res("ThHintBg", "#132038"),
+                Stroke          = Res("ThHintStroke", "#2A3A5A"),
+                StrokeThickness = 1,
+                Padding         = new Thickness(10, 7),
+                Content         = stack,
+            };
+            border.GestureRecognizers.Add(new TapGestureRecognizer
+            {
+                Command = new Command(() => _ = DeleteReceivedGiftAsync(slotIndex)),
+            });
+
+            ReceivedList.Children.Add(border);
+        }
+
+        if (count == 0)
+        {
+            ReceivedList.Children.Add(new Label
+            {
+                Text = "礼物槽是空的，还没有接收过任何卡片。",
+                FontFamily = "Nunito", FontSize = 11,
+                TextColor = Res("ThTextSecondary", "#8B97B0"),
+                Margin = new Thickness(2, 6, 2, 6),
+            });
+        }
+
+        ReceivedTitle.Text = $"我接收的礼物（{count}）";
+        ReceivedHint.Text  = $"{sav.Version} · 礼物槽 {storage.GiftCountMax} 格，点一行可删除";
+    }
+
+    private async Task DeleteReceivedGiftAsync(int index)
+    {
+        var sav = _session.ActiveSave;
+        if (sav is null) return;
+        if (!TryGetStorage(sav, out var storage, out _)) return;
+
+        var card = storage.GetMysteryGift(index);
+        if (card.IsEmpty) return;
+
+        var name = card is MysteryGift m ? m.CardHeader : $"第 {index + 1} 格";
+        if (!await DisplayAlertAsync("删除礼物卡",
+            $"{name}\n删除后回游戏里就领不到这张卡了，确定删除吗？", "删除", "取消"))
+            return;
+
+        try
+        {
+            var result = await SaveSyncService.ApplyAndWriteAsync(_session, s =>
+            {
+                if (s is not IMysteryGiftStorageProvider provider) return;
+                var st = provider.MysteryGiftStorage;
+
+                var empty = st.GetMysteryGift(index);
+                empty.Clear();
+                st.SetMysteryGift(index, empty);
+            });
+
+            if (result is SaveWriteResult.NoUri or SaveWriteResult.StaleUnreadable)
+            {
+                await DisplayAlertAsync("删除失败，存档未改动",
+                    result == SaveWriteResult.NoUri
+                        ? "找不到原存档文件位置，请改用「导出」。"
+                        : "存档已被游戏更新且无法解析，请回首页重新加载存档后再试。", "OK");
+            }
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("删除失败，存档未改动", ex.Message, "OK");
+        }
+
+        var latest = _session.ActiveSave;
+        if (latest is not null && TryGetStorage(latest, out var refreshed, out _))
+            BuildReceivedRows(latest, refreshed);
+    }
+
+    private static Color Res(string key, string fallback)
+    {
+        if (Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Color c)
+            return c;
+        return Color.FromArgb(fallback);
+    }
+
+    private string SpeciesName(ushort species)
+        => species > 0 && species < _strings.specieslist.Length
+            ? _strings.specieslist[species]
+            : species.ToString();
 
     private string BuildGiftDetail(MysteryGift gift)
     {
