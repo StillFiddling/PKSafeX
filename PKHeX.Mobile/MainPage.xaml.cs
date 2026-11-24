@@ -955,7 +955,36 @@ public partial class MainPage : ContentPage
     private void ActivatePrimaryButton()
     {
         if (_selectedSave is not null)
-            _ = Shell.Current.GoToAsync(nameof(GamePage));
+            _ = NavigateTo(nameof(GamePage));
+    }
+
+    /// <summary>
+    /// 统一的安全跳转：冷启动时 Shell 可能还没完成初始化，GoToAsync 会抛异常且被
+    /// 丢弃（表现为"点了没反应"）。这里捕获后短暂等待再重试一次，失败才提示。
+    /// </summary>
+    private async Task NavigateTo(string route)
+    {
+        try
+        {
+            await Shell.Current.GoToAsync(route);
+            return;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write($"Navigate:{route}", ex);
+        }
+
+        await Task.Delay(250);
+
+        try
+        {
+            await Shell.Current.GoToAsync(route);
+        }
+        catch (Exception retry)
+        {
+            CrashLog.Write($"NavigateRetry:{route}", retry);
+            await DisplayAlertAsync("跳转失败", $"{route}：{retry.Message}", "OK");
+        }
     }
 
     private void ActivateTile(int tile)
@@ -963,7 +992,7 @@ public partial class MainPage : ContentPage
         switch (tile)
         {
             case 0: // Gifts
-                _ = Shell.Current.GoToAsync(nameof(MysteryGiftDBPage));
+                _ = NavigateTo(nameof(MysteryGiftDBPage));
                 break;
             case 1: // Export
                 if (_selectedSave is not null)
@@ -972,13 +1001,13 @@ public partial class MainPage : ContentPage
             case 2: // Bank
                 // On Thor (dual screen): BankViewPage shows detail on top screen, grid on second screen.
                 // On phone: BankPage shows the full grid on the primary screen (BankViewPage has no grid there).
-                _ = Shell.Current.GoToAsync(_secondary.IsAvailable ? nameof(BankViewPage) : nameof(BankPage));
+                _ = NavigateTo(_secondary.IsAvailable ? nameof(BankViewPage) : nameof(BankPage));
                 break;
             case 3: // Dex
-                _ = Shell.Current.GoToAsync(nameof(DexPage));
+                _ = NavigateTo(nameof(DexPage));
                 break;
             case 4: // Settings
-                _ = Shell.Current.GoToAsync(nameof(SettingsPage));
+                _ = NavigateTo(nameof(SettingsPage));
                 break;
         }
     }
@@ -1094,7 +1123,7 @@ public partial class MainPage : ContentPage
                 CycleZone(1); break;
             case Android.Views.Keycode.ButtonSelect:
             case Android.Views.Keycode.ButtonStart:
-                _ = Shell.Current.GoToAsync(nameof(SettingsPage)); break;
+                _ = NavigateTo(nameof(SettingsPage)); break;
             case (Android.Views.Keycode)107: // KEYCODE_BUTTON_THUMBR — right stick click
                 _ = RefreshSavesAsync(); break;
         }

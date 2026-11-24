@@ -154,10 +154,16 @@
         <!-- 礼物槽列表浮层 -->
         <Grid x:Name="ReceivedOverlay" Grid.RowSpan="5" IsVisible="False"
               BackgroundColor="#B3000000">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnReceivedBackdropTapped" />
+            </Grid.GestureRecognizers>
             <Border VerticalOptions="End" StrokeShape="RoundRectangle 16,16,0,0"
                     BackgroundColor="{DynamicResource ThCardBg}"
                     Stroke="{DynamicResource ThDivider}" StrokeThickness="1"
                     Padding="16,14">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnReceivedPanelTapped" />
+                </Border.GestureRecognizers>
                 <VerticalStackLayout Spacing="10">
                     <Grid ColumnDefinitions="*,Auto">
                         <Label x:Name="ReceivedTitle" FontFamily="NunitoExtraBold" FontSize="14"

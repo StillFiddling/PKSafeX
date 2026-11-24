@@ -399,6 +399,15 @@ public partial class MysteryGiftDBPage : ContentPage
     private void OnReceivedCloseTapped(object? sender, TappedEventArgs e)
         => ReceivedOverlay.IsVisible = false;
 
+    // 点浮层外的灰底：关闭浮层（不再穿透到底下的礼物列表）
+    private void OnReceivedBackdropTapped(object? sender, TappedEventArgs e)
+        => ReceivedOverlay.IsVisible = false;
+
+    // 点浮层本体：什么都不做，避免冒泡到灰底把自己关掉
+    private void OnReceivedPanelTapped(object? sender, TappedEventArgs e)
+    {
+    }
+
     private void BuildReceivedRows(SaveFile sav, IMysteryGiftStorage storage)
     {
         ReceivedList.Children.Clear();
