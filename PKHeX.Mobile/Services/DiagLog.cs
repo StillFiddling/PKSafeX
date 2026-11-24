@@ -22,12 +22,46 @@ public static class DiagLog
         Console.WriteLine("[LAYOUT] " + entry);
     }
 
-    /// <summary>把缓冲写成文本文件，返回文件路径（供系统分享直接发送）。</summary>
+    /// <summary>把缓冲拼成整段文本（含设备信息抬头），供复制到剪贴板或写成文件。</summary>
+    public static string Text()
+    {
+        string header;
+        try
+        {
+            var d = DeviceDisplay.Current.MainDisplayInfo;
+            header = $"PKSafeX 布局诊断 {DateTime.Now:yyyy-MM-dd HH:mm:ss}  屏幕={d.Width:0}x{d.Height:0}px @{d.Density:0.##}  平台={DeviceInfo.Platform}";
+        }
+        catch
+        {
+            header = $"PKSafeX 布局诊断 {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+        }
+        return header + Environment.NewLine + Environment.NewLine + string.Join(Environment.NewLine, _lines);
+    }
+
+    /// <summary>把缓冲写成文本文件，返回文件路径（文件管理里可直接取走）。</summary>
     public static string Dump()
     {
-        var path = Path.Combine(FileSystem.CacheDirectory, $"pksafe-layout-{DateTime.Now:yyyyMMdd-HHmmss}.log");
-        var header = $"PKSafeX 布局诊断 {DateTime.Now:yyyy-MM-dd HH:mm:ss}{Environment.NewLine}{Environment.NewLine}";
-        File.WriteAllText(path, header + string.Join(Environment.NewLine, _lines));
-        return path;
+        var name = $"pksafe-layout-{DateTime.Now:yyyyMMdd-HHmmss}.log";
+        var text = Text();
+
+        // 优先写到应用外部目录（/Android/data/<pkg>/files/），文件管理里能看到、能直接拷走；
+        // 失败再退回 Cache 目录，两者都写，保证至少有一份。
+        string? primary = null;
+#if ANDROID
+        try
+        {
+            var dir = Android.App.Application.Context.GetExternalFilesDir(null)?.AbsolutePath;
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+                primary = Path.Combine(dir, name);
+                File.WriteAllText(primary, text);
+            }
+        }
+        catch { primary = null; }
+#endif
+        var cache = Path.Combine(FileSystem.CacheDirectory, name);
+        try { File.WriteAllText(cache, text); } catch { }
+        return primary ?? cache;
     }
 }

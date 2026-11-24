@@ -35,6 +35,8 @@ public static class UiText
 
     // ── 银行页 / 顶部存档条 ──
     public const string NoSaveLoaded = "没有加载存档";
+    // 与箱子页同款操作提示（右摇杆换箱 + 返回箱子页的按键）
+    public const string BankHintSubtitle = "右摇杆 左右换箱  |  L2/R2 回箱子";
 
     public static string SaveMeta(int tid, int sid, int boxes) =>
         $"初训家 ID {tid}/{sid} · 箱子 {boxes} 个";

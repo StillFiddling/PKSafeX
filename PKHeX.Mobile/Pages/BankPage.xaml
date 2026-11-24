@@ -78,10 +78,10 @@
                            FontFamily="QuicksandExtraBold" FontSize="18"
                            TextColor="{DynamicResource ThTextPrimary}"
                            HorizontalOptions="Center" MaxLines="1" LineBreakMode="TailTruncation" />
-                    <Label x:Name="BoxIndexLabel"
+                    <Label Text="{x:Static svc:UiText.BankHintSubtitle}"
                            FontFamily="Nunito" FontSize="9"
                            TextColor="{DynamicResource ThTextHint}"
-                           HorizontalOptions="Center" />
+                           HorizontalOptions="Center" VerticalOptions="Center" MaxLines="1" />
                 </VerticalStackLayout>
                 <Border x:Name="NextBankBtn" Grid.Column="2" StrokeShape="RoundRectangle 10"
                         BackgroundColor="{DynamicResource ThCardBg}"
@@ -110,7 +110,9 @@
             </Border>
 
             <!-- ── 顶部占位：与箱子页的搜索行同款同尺寸（44 高 + 12/0/12/6 外边距），
-                 银行页没有搜索框，用等高透明占位对齐画布顶边 ── -->
+                 银行页没有搜索框，用等高透明占位对齐画布顶边。
+                 额外 +2dp 上边距：箱子页 RootGrid 带 RowSpacing="2"，竖屏会把内容整体下推 2dp，
+                 银行页没有行间距，这里补回来，两页画布顶边才能严格重合。 ── -->
             <Border Grid.Row="3" x:Name="BoxTopSpacer"
                     StrokeShape="RoundRectangle 10" StrokeThickness="0"
                     BackgroundColor="Transparent" InputTransparent="True"

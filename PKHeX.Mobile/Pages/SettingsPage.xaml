@@ -251,7 +251,7 @@
                                FontAttributes="Bold" FontSize="15"
                                TextColor="{DynamicResource ThTextPrimary}" />
                         <Label x:Name="DiagLogSummaryLabel"
-                               Text="临时诊断：记录箱子页/银行页各行的实测高度，点一下用系统分享发出"
+                               Text="临时诊断：记录箱子页/银行页各行的实测高度，点一下保存文件并复制到剪贴板，直接粘贴发给作者"
                                FontSize="12" TextColor="{DynamicResource ThTextSecondary}" />
                     </VerticalStackLayout>
                     <Label Grid.Column="1" Text="›" FontSize="20"

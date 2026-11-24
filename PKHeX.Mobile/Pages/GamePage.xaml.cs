@@ -94,6 +94,7 @@ public partial class GamePage : ContentPage
     private float _gridOffsetY;
     private int _lastCanvasW;
     private int _lastCanvasH;
+    private int _paintLogN;     // 诊断（临时）：记录本次出现后的前几次绘制
 
     // Radar animation
     private float[]                  _radarCurrent = new float[6];
@@ -299,9 +300,21 @@ public partial class GamePage : ContentPage
 
 #if ANDROID
         // 诊断（临时）：返回后两个时间点打印各行的实测高度，排查银行页/箱子页 2.5dp 位移
+        _paintLogN = 0;
         Services.DiagLog.Add("game appear enter");
-        void LogOnce(string when) =>
-            Services.DiagLog.Add($"game {when} page={Height:0.0} strip={PhoneTrainerStrip.Height:0.0} nav={BoxNavRow.Height:0.0} search={BoxSearchRow.Height:0.0} canvas={BoxCanvas.Height:0.0} canvasY={BoxCanvas.Frame.Y:0.0} bottomY={BottomGrid.Frame.Y:0.0} bottom={BottomGrid.Height:0.0} info={InfoBarGrid.Height:0.0}");
+        void LogOnce(string when)
+        {
+            int absY = -1;
+#if ANDROID
+            if (BoxCanvas.Handler?.PlatformView is Android.Views.View pv)
+            {
+                var loc = new int[2];
+                pv.GetLocationOnScreen(loc);
+                absY = loc[1];
+            }
+#endif
+            Services.DiagLog.Add($"game {when} page={Height:0.0} root={RootGrid.Height:0.0}/{RootGrid.Frame.Y:0.0} rs={RootGrid.RowSpacing:0.##}/{RootGrid.ColumnSpacing:0.##} strip={PhoneTrainerStrip.Height:0.0} nav={BoxNavRow.Height:0.0} search={BoxSearchRow.Height:0.0} canvas={BoxCanvas.Height:0.0} canvasY={BoxCanvas.Frame.Y:0.0} absY={absY} gridAbsY={(absY < 0 ? -1 : absY + _gridOffsetY):0} bottomY={BottomGrid.Frame.Y:0.0} bottom={BottomGrid.Height:0.0} info={InfoBarGrid.Height:0.0} infoY={InfoBarGrid.Frame.Y:0.0} draw=cW{_canvasW} cH{_canvasH} offY{_gridOffsetY:0.0} slot{_gridSlotSize:0.0} gridH{(_gridSlotSize * Rows + 6 * (Rows - 1)):0.0}");
+        }
         Dispatcher.Dispatch(async () =>
         {
             await Task.Delay(700);  LogOnce("t700");
@@ -400,6 +413,12 @@ public partial class GamePage : ContentPage
     private void ApplyPhoneLayout(bool landscape)
     {
         _isLandscapePhone = landscape;
+
+        // 行/列间距只在横屏有意义：竖屏时 Row0 被压成 0 高、Column1 为 0 宽，
+        // 但 2dp 间距照样从可用高度/宽度里扣，会让 BottomGrid 比银行页少 2dp，
+        // 画布随之矮 2dp，网格垂直居中后就出现整体位移。竖屏归零彻底消除这个差。
+        RootGrid.RowSpacing    = landscape ? 2 : 0;
+        RootGrid.ColumnSpacing = landscape ? 2 : 0;
 
         if (landscape)
         {
@@ -595,6 +614,10 @@ public partial class GamePage : ContentPage
         float gridH = slotSize * Rows + gap * (Rows - 1);
         float offX = (canvasW - gridW) / 2f;
         float offY = (canvasH - gridH) / 2f;
+        // 对齐到整像素：两页画布高相差不到 1px 时，居中结果会出现 0.5px 的亚像素偏移，
+        // 落到屏幕上就是一边清晰一边发虚。取整后两页画出的网格位置逐像素一致。
+        offX = MathF.Floor(offX);
+        offY = MathF.Floor(offY);
 
         _gridSlotSize = slotSize;
         _gridOffsetX = offX;
@@ -619,6 +642,11 @@ public partial class GamePage : ContentPage
         if (_currentBox.Length == 0) return;
 
         RecalcGridLayout(e.Info.Width, e.Info.Height);
+#if ANDROID
+        // 诊断（临时）：记录出现后的前几次绘制尺寸，用于捕捉进场瞬间的尺寸跳变
+        if (_paintLogN < 8)
+            Services.DiagLog.Add($"game paint#{++_paintLogN} cW={e.Info.Width} cH={e.Info.Height} offY={_gridOffsetY:0.0}");
+#endif
 
         const float radius = 10f;
 

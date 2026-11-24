@@ -34,6 +34,13 @@ public partial class BankPage : ContentPage
     private int  _detailSlot = -1;
     private bool _detailVisible;
 
+    // 最近一次绘制使用的几何（像素），仅用于诊断日志
+    private float _paintCanvasH, _paintOffY, _paintSlot, _paintGridH;
+    private int _paintLogN;     // 诊断（临时）：记录本次出现后的前几次绘制
+    // 进场首帧画布尺寸尚未定型（实测 546.6dp，稳定后 518.9dp），此时绘制会让网格
+    // 比稳定位置低 49px 再向上跳。布局定型前只铺底色，不画网格。
+    private bool _paintReady;
+
     public BankPage(ISecondaryDisplay secondary, SessionState session)
     {
         _secondary = secondary;
@@ -77,11 +84,33 @@ public partial class BankPage : ContentPage
         LoadBox(_boxIndex);
         BuildHintBar();
 
+        // 布局定型后再开始绘制网格：等两帧布局 + 少量延时，
+        // 避开首帧画布 546.6dp / 稳定后 518.9dp 的跳变。
+        _paintReady = false;
+        Dispatcher.Dispatch(async () =>
+        {
+            await Task.Delay(80);
+            _paintReady = true;
+            BankCanvas.InvalidateSurface();
+        });
+
 #if ANDROID
         // 诊断（临时）：银行页两个时间点的行高，与箱子页比对
+        _paintLogN = 0;
         Services.DiagLog.Add("bank appear enter");
-        void LogOnce(string when) =>
-            Services.DiagLog.Add($"bank {when} page={Height:0.0} header={HeaderRow.Height:0.0} nav={NavRow.Height:0.0} banner={ModeBanner.Height:0.0}/{ModeBanner.IsVisible} spacer={BoxTopSpacer.Height:0.0} canvas={BankCanvas.Height:0.0} canvasY={BankCanvas.Frame.Y:0.0} info={BankInfoBar.Height:0.0}");
+        void LogOnce(string when)
+        {
+            int absY = -1;
+#if ANDROID
+            if (BankCanvas.Handler?.PlatformView is Android.Views.View pv)
+            {
+                var loc = new int[2];
+                pv.GetLocationOnScreen(loc);
+                absY = loc[1];
+            }
+#endif
+            Services.DiagLog.Add($"bank {when} page={Height:0.0} root={RootGrid.Height:0.0}/{RootGrid.Frame.Y:0.0} header={HeaderRow.Height:0.0} nav={NavRow.Height:0.0} banner={ModeBanner.Height:0.0}/{ModeBanner.IsVisible} spacer={BoxTopSpacer.Height:0.0} canvas={BankCanvas.Height:0.0} canvasY={BankCanvas.Frame.Y:0.0} absY={absY} gridAbsY={(absY < 0 ? -1 : absY + _paintOffY):0} info={BankInfoBar.Height:0.0} infoY={BankInfoBar.Frame.Y:0.0} draw=cH{_paintCanvasH:0} offY{_paintOffY:0.0} slot{_paintSlot:0.0} gridH{_paintGridH:0.0}");
+        }
         Dispatcher.Dispatch(async () =>
         {
             await Task.Delay(700);  LogOnce("t700");
@@ -122,6 +151,7 @@ public partial class BankPage : ContentPage
 #endif
         ThemeService.ThemeChanged -= OnThemeChanged;
         BackCoordinator.Unbind(HandleBackAction);
+        _paintReady = false;   // 下次进场重新等布局定型
     }
 
     /// <summary>
@@ -159,7 +189,6 @@ public partial class BankPage : ContentPage
         _boxIndex      = box;
         _currentSlots  = _bank.GetBoxData(box);
         BankNameLabel.Text  = LocalizeBankName(box < _bank.Boxes.Count ? _bank.Boxes[box].Name : $"银行 {box + 1}");
-        BoxIndexLabel.Text  = $"{box + 1} / {_bank.Boxes.Count}";
 
         await _sprites.PreloadBoxAsync(_currentSlots.Select(p => p ?? CreateBlankPKM()).ToArray());
         BankCanvas.InvalidateSurface();
@@ -210,6 +239,9 @@ public partial class BankPage : ContentPage
         // 与页面背景同色：整页只保留一层底色，画布区域不再出现单独的色带
         canvas.Clear(ThemeService.PageBg);
         if (_currentSlots.Length == 0) return;
+        // 首帧布局未定型（画布高度会是 1913px 而非 1816px），此时不画网格，
+        // 否则网格会先低位再上跳 49px。等布局稳定后由 Dispatcher 触发重绘。
+        if (!_paintReady) return;
 
         const float gap    = 6f;
         const float padX   = 14f, padY = 4f;
@@ -222,6 +254,18 @@ public partial class BankPage : ContentPage
         float gridH    = slotSize * Rows    + gap * (Rows - 1);
         float offX     = (e.Info.Width  - gridW) / 2f;
         float offY     = (e.Info.Height - gridH) / 2f;
+        offX = MathF.Floor(offX);   // 与箱子页同样取整到整像素，避免 0.5px 亚像素差
+        offY = MathF.Floor(offY);
+
+        _paintCanvasH = e.Info.Height;
+        _paintOffY    = offY;
+        _paintSlot    = slotSize;
+        _paintGridH   = gridH;
+#if ANDROID
+        // 诊断（临时）：记录出现后的前几次绘制尺寸，用于捕捉进场瞬间的尺寸跳变
+        if (_paintLogN < 8)
+            Services.DiagLog.Add($"bank paint#{++_paintLogN} cW={e.Info.Width} cH={e.Info.Height} offY={offY:0.0}");
+#endif
 
         for (int i = 0; i < BankService.SlotsPerBox; i++)
         {

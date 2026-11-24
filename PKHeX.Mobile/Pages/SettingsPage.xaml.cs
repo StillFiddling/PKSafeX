@@ -258,7 +258,7 @@ public partial class SettingsPage : ContentPage
     private async void OnExportDiagTapped(object? sender, TappedEventArgs e)
         => await ExportDiagAsync();
 
-    /// <summary>诊断（临时）：把布局日志写成文本，调系统分享发出。</summary>
+    /// <summary>诊断（临时）：布局日志写入文件（应用外部目录）+ 复制到剪贴板，两条路都留。</summary>
     private async Task ExportDiagAsync()
     {
         try
@@ -270,16 +270,16 @@ public partial class SettingsPage : ContentPage
                 return;
             }
 
-            var path = DiagLog.Dump();
-            await Share.Default.RequestAsync(new ShareFileRequest
-            {
-                Title = "PKSafe 布局诊断日志",
-                File  = new ShareFile(path),
-            });
+            var text = DiagLog.Text();
+            await Clipboard.Default.SetTextAsync(text);
+            var path = DiagLog.Dump(); // 同时写一份文件（应用外部目录优先），方便直接取走
+
+            await DisplayAlertAsync("日志已保存并复制",
+                $"共 {DiagLog.Count} 行。\n\n已复制到剪贴板，可直接粘贴发送。\n文件也已保存到：\n{path}", "好");
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("导出失败", ex.Message, "好");
+            await DisplayAlertAsync("复制失败", ex.Message, "好");
         }
     }
 
