@@ -255,8 +255,18 @@ public partial class MainPage : ContentPage
         catch (Exception ex) { CrashLog.Write($"MainPage.{tag}", ex); }
     }
 
+    private bool _refreshRunning;
+
     private async Task RefreshSavesSafeAsync()
     {
+        // 返回首页会再次触发刷新；上一次还没跑完就直接复用它的结果，不叠第二遍。
+        if (_refreshRunning)
+        {
+            DiagLog.Add("[HOME] refresh skipped (already running)");
+            return;
+        }
+
+        _refreshRunning = true;
         MarkRefreshing(true);
         var t0 = Stopwatch.GetTimestamp();
         DiagLog.Add("[HOME] refresh start");
@@ -271,6 +281,7 @@ public partial class MainPage : ContentPage
         }
         finally
         {
+            _refreshRunning = false;
             MarkRefreshing(false);
         }
     }
@@ -279,9 +290,12 @@ public partial class MainPage : ContentPage
     private async Task VerifyCachedSafeAsync()
     {
         MarkRefreshing(true);
+        var t0 = Stopwatch.GetTimestamp();
+        DiagLog.Add("[HOME] verify start");
         try
         {
-            var verified = await _dirService.VerifyCachedAsync(_session.LoadedSaves);
+            var verified = await Task.Run(async () => await _dirService.VerifyCachedAsync(_session.LoadedSaves));
+            DiagLog.Add($"[HOME] verify done {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0}ms");
             if (verified.Count == 0) return;
             _session.LoadedSaves = verified;
             ApplySaveEntries(verified);
@@ -490,7 +504,10 @@ public partial class MainPage : ContentPage
 
     private async Task RefreshSavesAsync()
     {
-        var entries = await _dirService.ScanAllAsync();
+        // 整条扫描链（SAF 遍历、逐个存档解析、SHA-256 去重）都在主线程上跑过，
+        // 实测把 UI 线程占住 6 秒，期间点图鉴、点返回全被吞掉。
+        // 现在整段丢到后台线程，主线程只负责最后一次性刷新列表。
+        var entries = await Task.Run(async () => await _dirService.ScanAllAsync());
         _session.LoadedSaves = entries;
         _session.RescanNeeded = false;
         ApplySaveEntries(entries);
