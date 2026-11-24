@@ -11,7 +11,7 @@
 
     <ApplicationId>com.pksafe.x</ApplicationId>
     <AssemblyName>PKSafe</AssemblyName>
-    <ApplicationVersion>48</ApplicationVersion>
+    <ApplicationVersion>49</ApplicationVersion>
     <ApplicationDisplayVersion>1.0.8</ApplicationDisplayVersion>
     <ApplicationTitle>PKSafeX</ApplicationTitle>
 

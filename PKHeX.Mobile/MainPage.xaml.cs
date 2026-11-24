@@ -227,12 +227,24 @@ public partial class MainPage : ContentPage
                 TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
             _ = AddPendingSafeAsync();
         }
-        else if (_session.RescanNeeded || _session.LoadedSaves.Count == 0)
+        else if (_session.LoadedSaves.Count == 0)
         {
-            // Show cached list immediately if available, then rescan in background.
-            if (_session.LoadedSaves.Count > 0)
-                TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
+            // 一个缓存都没有：只能全量扫
             _ = RefreshSavesSafeAsync();
+        }
+        else if (_session.RescanNeeded)
+        {
+            // 明确要求重扫（管理页改过路径等）：已有卡片先铺上，后台全量扫
+            TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
+            _ = RefreshSavesSafeAsync();
+        }
+        else if (!_homeBootstrapped)
+        {
+            // 冷启动有缓存：卡片立刻上屏，后台只校验「磁盘上变过的文件」，
+            // 全量扫描推迟到空闲时再做（负责发现新加进来的存档），
+            // 首页第一屏不再等那 6~7 秒的整盘遍历。
+            TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
+            _ = StartupVerifyThenIdleScanAsync();
         }
         else
         {
@@ -241,6 +253,7 @@ public partial class MainPage : ContentPage
             // 缓存铺出来的列表：后台只校验「有变化的文件」，不改动其它卡片
             if (usedCache) _ = VerifyCachedSafeAsync();
         }
+        _homeBootstrapped = true;
         TryStep("UpdateActionHighlight", UpdateActionHighlight);
         TryStep("BindHomeHintTaps", BindHomeHintTaps);
 
@@ -259,6 +272,25 @@ public partial class MainPage : ContentPage
     }
 
     private bool _refreshRunning;
+    private bool _homeBootstrapped;
+
+    /// <summary>
+    /// 冷启动的省时路径：先用缓存卡片上屏，立刻做一次「只查变过的文件」的校验，
+    /// 等界面稳定 8 秒后再在后台补一次全量扫描（负责发现新加进来的存档）。
+    /// 全程都在后台线程，主线程只接收结果。
+    /// </summary>
+    private async Task StartupVerifyThenIdleScanAsync()
+    {
+        await VerifyCachedSafeAsync();
+        await Task.Delay(8000);
+        if (_refreshRunning)
+        {
+            DiagLog.Add("[HOME] idle scan skipped (refresh running)");
+            return;
+        }
+        DiagLog.Add("[HOME] idle scan start");
+        await RefreshSavesSafeAsync();
+    }
 
     private async Task RefreshSavesSafeAsync()
     {
