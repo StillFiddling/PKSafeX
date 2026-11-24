@@ -227,24 +227,22 @@ public partial class MainPage : ContentPage
                 TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
             _ = AddPendingSafeAsync();
         }
-        else if (_session.LoadedSaves.Count == 0)
+        else if (!_homeBootstrapped && _session.LoadedSaves.Count > 0)
         {
-            // 一个缓存都没有：只能全量扫
-            _ = RefreshSavesSafeAsync();
-        }
-        else if (_session.RescanNeeded)
-        {
-            // 明确要求重扫（管理页改过路径等）：已有卡片先铺上，后台全量扫
-            TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
-            _ = RefreshSavesSafeAsync();
-        }
-        else if (!_homeBootstrapped)
-        {
-            // 冷启动有缓存：卡片立刻上屏，后台只校验「磁盘上变过的文件」，
+            // 冷启动 + 有缓存：卡片立刻上屏，后台只校验「磁盘上变过的文件」，
             // 全量扫描推迟到空闲时再做（负责发现新加进来的存档），
             // 首页第一屏不再等那 6~7 秒的整盘遍历。
+            // 注意 RescanNeeded 默认是 true，这里必须一并清掉，否则下次回首页又会立刻全扫。
+            _session.RescanNeeded = false;
             TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
             _ = StartupVerifyThenIdleScanAsync();
+        }
+        else if (_session.RescanNeeded || _session.LoadedSaves.Count == 0)
+        {
+            // 明确要求重扫（管理页改过路径等）或一个缓存都没有：已有卡片先铺上，后台全量扫
+            if (_session.LoadedSaves.Count > 0)
+                TryStep("ApplySaveEntries", () => ApplySaveEntries(_session.LoadedSaves));
+            _ = RefreshSavesSafeAsync();
         }
         else
         {
@@ -1033,16 +1031,18 @@ public partial class MainPage : ContentPage
     /// </summary>
     private async Task NavigateTo(string route)
     {
+        var navT0 = Stopwatch.GetTimestamp();
+        DiagLog.Add($"[NAV] start -> {route} @{HomeMs():F0}ms");
         try
         {
             await Shell.Current.GoToAsync(route);
-            DiagLog.Add($"[NAV] -> {route} ok {HomeMs():F0}ms");
+            DiagLog.Add($"[NAV] -> {route} ok {Stopwatch.GetElapsedTime(navT0).TotalMilliseconds:F0}ms");
             return;
         }
         catch (Exception ex)
         {
             CrashLog.Write($"Navigate:{route}", ex);
-            DiagLog.Add($"[NAV] -> {route} fail {HomeMs():F0}ms {ex.GetType().Name}");
+            DiagLog.Add($"[NAV] -> {route} fail {Stopwatch.GetElapsedTime(navT0).TotalMilliseconds:F0}ms {ex.GetType().Name}");
         }
 
         await Task.Delay(250);
@@ -1050,7 +1050,7 @@ public partial class MainPage : ContentPage
         try
         {
             await Shell.Current.GoToAsync(route);
-            DiagLog.Add($"[NAV] -> {route} retry ok {HomeMs():F0}ms");
+            DiagLog.Add($"[NAV] -> {route} retry ok {Stopwatch.GetElapsedTime(navT0).TotalMilliseconds:F0}ms");
         }
         catch (Exception retry)
         {
