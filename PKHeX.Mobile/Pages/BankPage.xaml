@@ -16,6 +16,9 @@
             <!-- ── Save header（与箱子页顶部完全同款：图标 + 名字 + 游戏名 + 箱子 ▸） ── -->
             <Grid x:Name="HeaderRow" Grid.Row="0" ColumnDefinitions="Auto,12,*,Auto"
                   BackgroundColor="Transparent" Padding="14,10,10,6">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSaveChipTapped" />
+                </Grid.GestureRecognizers>
                 <Border StrokeShape="RoundRectangle 10"
                         Stroke="#0FFFFFFF" StrokeThickness="1"
                         WidthRequest="58" HeightRequest="58" VerticalOptions="Center">
@@ -138,6 +141,32 @@
                 <ScrollView Grid.Row="1" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
                     <HorizontalStackLayout x:Name="HintBar" Spacing="8" VerticalOptions="Center" />
                 </ScrollView>
+            </Grid>
+
+            <!-- 横屏单栏底栏：左下当前存档（可点切换）、右下功能按键徽章 -->
+            <Grid x:Name="LsBottomBar" Grid.Row="5" IsVisible="False"
+                  ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10"
+                  Padding="12,4,12,8"
+                  BackgroundColor="{DynamicResource ThTopScreenBg}">
+                <HorizontalStackLayout x:Name="LsSaveChip" Spacing="8" VerticalOptions="Center">
+                    <HorizontalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSaveChipTapped" />
+                    </HorizontalStackLayout.GestureRecognizers>
+                    <Image x:Name="LsGameIcon" WidthRequest="26" HeightRequest="26" Aspect="AspectFill" />
+                    <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+                        <Label x:Name="LsTrainerName" FontFamily="NunitoExtraBold" FontSize="14"
+                               TextColor="{DynamicResource ThTextPrimary}"
+                               MaxLines="1" LineBreakMode="TailTruncation" />
+                        <Label x:Name="LsGameLabel" FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextSecondary}"
+                               MaxLines="1" LineBreakMode="TailTruncation" />
+                    </VerticalStackLayout>
+                    <Label Text="▾" FontSize="12" TextColor="{DynamicResource ThTextHint}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout x:Name="LsHints" Grid.Column="2" Spacing="6"
+                                       HorizontalOptions="End" VerticalOptions="Center" />
             </Grid>
         </Grid>
 

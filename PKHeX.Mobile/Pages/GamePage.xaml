@@ -333,6 +333,9 @@
                   ColumnDefinitions="Auto,12,*,Auto"
                   Padding="14,10,10,6"
                   BackgroundColor="{DynamicResource ThTopScreenBg}">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSaveChipTapped" />
+                </Grid.GestureRecognizers>
 
                 <Border Grid.Column="0" StrokeShape="RoundRectangle 9"
                         Stroke="#0FFFFFFF" StrokeThickness="1"
@@ -554,6 +557,33 @@
                     </HorizontalStackLayout>
                     </HorizontalStackLayout>
                 </ScrollView>
+            </Grid>
+
+            <!-- 横屏单栏底栏：左下存档/训练家（可点切换）、右下功能按键徽章 -->
+            <Grid x:Name="LsBottomBar" Grid.Row="5" IsVisible="False"
+                  ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10"
+                  Padding="12,4,12,8"
+                  BackgroundColor="{DynamicResource ThTopScreenBg}">
+
+                <HorizontalStackLayout x:Name="LsSaveChip" Spacing="8" VerticalOptions="Center">
+                    <HorizontalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSaveChipTapped" />
+                    </HorizontalStackLayout.GestureRecognizers>
+                    <Image x:Name="LsGameIcon" WidthRequest="26" HeightRequest="26" Aspect="AspectFill" />
+                    <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+                        <Label x:Name="LsTrainerName" FontFamily="NunitoExtraBold" FontSize="14"
+                               TextColor="{DynamicResource ThTextPrimary}"
+                               MaxLines="1" LineBreakMode="TailTruncation" />
+                        <Label x:Name="LsGameLabel" FontFamily="Nunito" FontSize="10"
+                               TextColor="{DynamicResource ThTextSecondary}"
+                               MaxLines="1" LineBreakMode="TailTruncation" />
+                    </VerticalStackLayout>
+                    <Label Text="▾" FontSize="12" TextColor="{DynamicResource ThTextHint}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout x:Name="LsHints" Grid.Column="2" Spacing="6"
+                                       HorizontalOptions="End" VerticalOptions="Center" />
             </Grid>
 
         </Grid>

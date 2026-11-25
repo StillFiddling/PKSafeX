@@ -11,8 +11,8 @@
 
     <ApplicationId>com.pksafe.x</ApplicationId>
     <AssemblyName>PKSafe</AssemblyName>
-    <ApplicationVersion>55</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0.10</ApplicationDisplayVersion>
+    <ApplicationVersion>56</ApplicationVersion>
+    <ApplicationDisplayVersion>1.1.0-test1</ApplicationDisplayVersion>
     <ApplicationTitle>PKSafeX</ApplicationTitle>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
@@ -45,5 +45,6 @@
   </ItemGroup>
 
 </Project>
+
 
 

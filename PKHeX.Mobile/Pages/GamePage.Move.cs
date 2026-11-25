@@ -114,6 +114,7 @@ public partial class GamePage
         }
 
         _moveExecuting = true;
+        _session.SaveWriteBusy = true;
         bool merged = false;
         try
         {
@@ -170,6 +171,7 @@ public partial class GamePage
         finally
         {
             _moveExecuting = false;
+            _session.SaveWriteBusy = false;
         }
 
         CancelMoveMode();

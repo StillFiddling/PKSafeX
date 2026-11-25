@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Maui.Controls.Shapes;
 using PKHeX.Core;
+using PKHeX.Mobile.Controls;
 using PKHeX.Mobile.Models;
 using PKHeX.Mobile.Services;
 using PKHeX.Mobile.Theme;
@@ -225,27 +226,7 @@ public partial class GamePage : ContentPage
             _cursorSlot  = 0;
             DeselectSlot();
 
-            TrainerNameLabel.Text     = sav.OT;
-            SaveGameLabel.Text        = $"Pokémon {sav.Version}";
-            TrainerTIDLabel.Text      = sav.TrainerTID7.ToString();
-            TrainerPokedexLabel.Text  = sav.BoxCount.ToString();
-            TrainerPlaytimeLabel.Text = sav.PlayTimeString;
-
-            // Set trainer circle game icon
-            var iconFile = GetTrainerIconFile(sav);
-            if (iconFile != null)
-                TrainerGameIcon.Source = ImageSource.FromStream(
-                    ct => FileSystem.OpenAppPackageFileAsync($"gameicons/{iconFile}").WaitAsync(ct));
-
-            // Phone compact strip
-            if (_isPhone)
-            {
-                PhoneTrainerName.Text = sav.OT;
-                PhoneGameLabel.Text   = $"Pokémon {sav.Version}";
-                if (iconFile != null)
-                    PhoneGameIcon.Source = ImageSource.FromStream(
-                        ct => FileSystem.OpenAppPackageFileAsync($"gameicons/{iconFile}").WaitAsync(ct));
-            }
+            ApplyTrainerIdentity(sav);
         }
 
         // If returning from bank with a withdrawn Pokémon, enter move mode
@@ -422,24 +403,26 @@ public partial class GamePage : ContentPage
 
         if (landscape)
         {
-            // Two-column: left = TopScreenPanel (trainer + detail), right = box grid
+            // 单栏：去掉左栏 TopScreenPanel，格子占满整宽；训练家与按键徽章移到底部
             RootGrid.RowDefinitions[0].Height    = GridLength.Star;
             RootGrid.RowDefinitions[1].Height    = new GridLength(0);
             RootGrid.ColumnDefinitions[0].Width  = GridLength.Star;
-            RootGrid.ColumnDefinitions[1].Width  = new GridLength(2, GridUnitType.Star);
+            RootGrid.ColumnDefinitions[1].Width  = new GridLength(0);
             Grid.SetRow(BottomGrid, 0);
-            Grid.SetColumn(BottomGrid, 1);
-            TopScreenPanel.IsVisible    = true;
-            PhoneTrainerStrip.IsVisible = false;
+            Grid.SetColumn(BottomGrid, 0);
 
-            // Dismiss bottom sheet if it was open — left panel handles detail
-            if (_phoneSheetVisible)
-            {
-                PhoneSheetPanel.TranslationY = 600;
-                PhoneSheetScrim.Opacity = 0;
-                PhoneDetailSheet.InputTransparent = true;
-                _phoneSheetVisible = false;
-            }
+            TopScreenPanel.IsVisible    = false;
+            PhoneTrainerStrip.IsVisible = false;
+            InfoBarGrid.IsVisible       = false;
+            LsBottomBar.IsVisible       = true;
+
+            // 竖向空间优先给格子：导航行与搜索行压紧
+            BoxNavRow.Padding    = new Thickness(12, 2, 12, 2);
+            BoxSearchRow.HeightRequest = 34;
+            BoxSearchRow.Margin = new Thickness(12, 0, 12, 4);
+
+            SyncLandscapeBottomBar();
+            BuildLandscapeHints();
         }
         else
         {
@@ -452,6 +435,13 @@ public partial class GamePage : ContentPage
             Grid.SetColumn(BottomGrid, 0);
             TopScreenPanel.IsVisible    = false;
             PhoneTrainerStrip.IsVisible = true;
+            InfoBarGrid.IsVisible       = true;
+            LsBottomBar.IsVisible       = false;
+
+            BoxNavRow.Padding          = new Thickness(16, 12, 16, 8);
+            BoxSearchRow.HeightRequest = 44;
+            BoxSearchRow.Margin        = new Thickness(12, 0, 12, 6);
+
             // Restore 3-column proportions so the panel is correct if we rotate back
             RestoreLandscapeColumns();
             _landscapeDetailView = 0;
@@ -464,6 +454,126 @@ public partial class GamePage : ContentPage
         TopBgCanvas.InvalidateSurface();
         BoxCanvas.InvalidateSurface();
         RadarCanvas.InvalidateSurface();
+    }
+
+    // ──────────────────────────────────────────────
+    //  训练家标识 / 横屏单栏底栏 / 存档切换
+    // ──────────────────────────────────────────────
+
+    /// <summary>把存档的身份信息同步到所有展示位（顶部、竖屏条、横屏底栏）。</summary>
+    private void ApplyTrainerIdentity(SaveFile sav)
+    {
+        var game = $"Pokémon {sav.Version}";
+
+        TrainerNameLabel.Text     = sav.OT;
+        SaveGameLabel.Text        = game;
+        TrainerTIDLabel.Text      = sav.TrainerTID7.ToString();
+        TrainerPokedexLabel.Text  = sav.BoxCount.ToString();
+        TrainerPlaytimeLabel.Text = sav.PlayTimeString;
+
+        PhoneTrainerName.Text = sav.OT;
+        PhoneGameLabel.Text   = game;
+
+        LsTrainerName.Text = sav.OT;
+        LsGameLabel.Text   = game;
+
+        var iconFile = GetTrainerIconFile(sav);
+        if (iconFile is null) return;
+
+        var source = ImageSource.FromStream(
+            ct => FileSystem.OpenAppPackageFileAsync($"gameicons/{iconFile}").WaitAsync(ct));
+        TrainerGameIcon.Source = source;
+        PhoneGameIcon.Source   = source;
+        LsGameIcon.Source      = source;
+    }
+
+    private void SyncLandscapeBottomBar()
+    {
+        LsTrainerName.Text = PhoneTrainerName.Text;
+        LsGameLabel.Text   = PhoneGameLabel.Text;
+        LsGameIcon.Source  = PhoneGameIcon.Source;
+    }
+
+    /// <summary>横屏单栏右下角的 5 枚按键徽章（与竖屏提示条同一套样式）。</summary>
+    private void BuildLandscapeHints()
+    {
+        if (LsHints.Count > 0) return;
+
+        LsHints.Add(HintChips.Create("A", "#34D990", UiText.HintSelect));
+        LsHints.Add(HintChips.Create("Y", "#6BABFF", UiText.HintGrab));
+        LsHints.Add(HintChips.Create("B", "#FF6B9D", UiText.HintBack));
+        LsHints.Add(HintChips.Create("R", "#60C0FF", UiText.HintCry));
+
+        var editChip = HintChips.Create("≡", "#F0C040", UiText.HintEdit);
+        editChip.GestureRecognizers.Add(new TapGestureRecognizer
+        {
+            Command = new Command(() => OpenActionMenu()),
+        });
+        LsHints.Add(editChip);
+    }
+
+    private SaveSwitcherSheet? _saveSwitcher;
+
+    private void EnsureSaveSwitcher()
+    {
+        if (_saveSwitcher is not null) return;
+        _saveSwitcher = new SaveSwitcherSheet(_session, OnSavePickedAsync);
+        Grid.SetRow(_saveSwitcher, 0);
+        Grid.SetColumn(_saveSwitcher, 0);
+        Grid.SetRowSpan(_saveSwitcher, 2);
+        Grid.SetColumnSpan(_saveSwitcher, 2);
+        RootGrid.Add(_saveSwitcher);
+    }
+
+    private void OnSaveChipTapped(object sender, TappedEventArgs e) => _ = OpenSaveSwitcherAsync();
+
+    private async Task OpenSaveSwitcherAsync()
+    {
+        if (_session.SaveWriteBusy)
+        {
+            await DisplayAlertAsync("正在写入存档", "等这次写入完成再切换，避免写进错的存档。", "好");
+            return;
+        }
+        if (_session.PendingMove is not null || _moveMode)
+            await DisplayAlertAsync("先结束手上的移动",
+                "正在搬动宝可梦。切存档会取消这次移动（银行里的宝可梦不会丢），先按 B 结束再切。", "好");
+        if (!_session.SaveWriteBusy && _session.PendingMove is null && !_moveMode)
+        {
+            EnsureSaveSwitcher();
+            await _saveSwitcher!.ShowAsync();
+        }
+    }
+
+    private async Task OnSavePickedAsync(SaveEntry entry)
+    {
+        var err = await SaveSwitchService.SwitchAsync(_session, entry);
+        if (err is not null)
+        {
+            await DisplayAlertAsync("切换失败", err, "OK");
+            return;
+        }
+
+        _sav = _session.ActiveSave!;
+
+        // 清编辑态
+        _selectedSlot = -1;
+        _moveMode     = false;
+        _movePk       = null;
+        _searchMode   = false;
+        _searchResults = [];
+        _cursorSlot   = 0;
+        _boxIndex     = SaveSwitchService.RecallBoxIndex(_session.ActiveSaveFileUri, _sav.BoxCount);
+
+        ApplyTrainerIdentity(_sav);
+        if (_isLandscapePhone) SyncLandscapeBottomBar();
+
+        if (_phoneSheetVisible) await HidePhoneDetailSheetAsync();
+
+        _session.RescanNeeded = false;   // 只是切上下文，不需要重扫
+        LoadBox(_boxIndex);
+        UpdateTopPanel();
+        UpdateInfoBar();
+        BoxCanvas.InvalidateSurface();
     }
 
 #if ANDROID
@@ -1546,7 +1656,7 @@ public partial class GamePage : ContentPage
             case KeyMap.BankInKey: _ = SwapToBank(+1); break;
 
             case Android.Views.Keycode.ButtonX:
-                if (_isLandscapePhone && TopSelectedPanel.IsVisible)
+                if (_isLandscapePhone && TopScreenPanel.IsVisible && TopSelectedPanel.IsVisible)
                 {
                     _landscapeDetailView = (_landscapeDetailView + 1) % 3;
                     ApplyLandscapeDetailView();
@@ -1710,7 +1820,7 @@ public partial class GamePage : ContentPage
             ? _strings.balllist[pk.Ball] : "—";
 
         // Apply current toggle / landscape-cycle state
-        if (_isLandscapePhone)
+        if (_isLandscapePhone && TopScreenPanel.IsVisible)
             ApplyLandscapeDetailView();
         else
             ApplyDetailToggle();
@@ -2063,7 +2173,7 @@ public partial class GamePage : ContentPage
         if (_currentBox[slot].Species == 0) return;
         _selectedSlot = slot;
         BoxCanvas.InvalidateSurface();
-        if (_isPhone && !_isLandscapePhone) _ = ShowPhoneDetailSheetAsync(_currentBox[slot]);
+        if (_isPhone) _ = ShowPhoneDetailSheetAsync(_currentBox[slot]);
     }
 
     /// <summary>Clear selected outline.</summary>
@@ -2071,7 +2181,7 @@ public partial class GamePage : ContentPage
     {
         _selectedSlot = -1;
         BoxCanvas.InvalidateSurface();
-        if (_isPhone && !_isLandscapePhone && _phoneSheetVisible) _ = HidePhoneDetailSheetAsync();
+        if (_isPhone && _phoneSheetVisible) _ = HidePhoneDetailSheetAsync();
     }
 
     // ──────────────────────────────────────────────

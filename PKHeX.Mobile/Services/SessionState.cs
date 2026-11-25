@@ -49,6 +49,12 @@ public class SessionState
     /// <summary>Set to true by SettingsPage/WelcomePage when watched directories change so MainPage re-scans on next appearance.</summary>
     public bool RescanNeeded { get; set; } = true;
 
+    /// <summary>
+    /// 正在把存档写回磁盘（存入/取出/编辑保存）。
+    /// 为 true 时禁止切换存档，避免"写进了旧存档、当前存档已经换了"。
+    /// </summary>
+    public bool SaveWriteBusy { get; set; }
+
     // ── 待增量加入的路径（管理页/设置页写入，首页消费）──────────────────────
 
     private static readonly List<(string Uri, bool IsFile)> _pendingAdds = [];

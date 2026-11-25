@@ -1,5 +1,6 @@
 using Microsoft.Maui.Controls.Shapes;
 using PKHeX.Core;
+using PKHeX.Mobile.Controls;
 using PKHeX.Mobile.Services;
 using SkiaSharp;
 using SkiaSharp.Views.Maui;
@@ -40,12 +41,135 @@ public partial class BankPage : ContentPage
     // 进场首帧画布尺寸尚未定型（实测 546.6dp，稳定后 518.9dp），此时绘制会让网格
     // 比稳定位置低 49px 再向上跳。布局定型前只铺底色，不画网格。
     private bool _paintReady;
+    private bool _isLandscape;
+    private bool _layoutApplied;
 
     public BankPage(ISecondaryDisplay secondary, SessionState session)
     {
         _secondary = secondary;
         _session   = session;
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// 横屏单栏 / 竖屏切换：横屏时隐藏顶部存档大条与信息条，改由底部一行承载
+    /// （左下当前存档、右下按键徽章），把竖向空间全部让给格子。
+    /// </summary>
+    private void ApplyResponsiveLayout(bool landscape)
+    {
+        _isLandscape = landscape;
+        _layoutApplied = true;
+
+        if (landscape)
+        {
+            HeaderRow.IsVisible    = false;
+            BoxTopSpacer.IsVisible = false;
+            BankInfoBar.IsVisible  = false;
+            LsBottomBar.IsVisible  = true;
+            NavRow.Padding         = new Thickness(12, 2, 12, 2);
+            FillSaveHeader();
+            BuildLandscapeHints();
+        }
+        else
+        {
+            HeaderRow.IsVisible    = true;
+            BoxTopSpacer.IsVisible = true;
+            BankInfoBar.IsVisible  = true;
+            LsBottomBar.IsVisible  = false;
+            NavRow.Padding         = new Thickness(16, 12, 16, 8);
+        }
+    }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        if (width <= 0 || height <= 0) return;
+        bool landscape = width > height;
+        if (!_layoutApplied || landscape != _isLandscape)
+            ApplyResponsiveLayout(landscape);
+
+        // 版式变了画布尺寸也变，布局稳定后重画一次，避免网格停在旧位置
+        BankCanvas.InvalidateSurface();
+    }
+
+    private void SyncLandscapeBottomBar()
+    {
+        LsTrainerName.Text = BankTrainerNameLabel.Text;
+        LsGameLabel.Text   = BankSaveGameLabel.Text;
+        LsGameIcon.Source  = BankGameIcon.Source;
+    }
+
+    private void BuildLandscapeHints()
+    {
+        if (LsHints.Count > 0) return;
+        LsHints.Add(HintChips.Create("A", "#34D990", UiText.HintSelectPlace));
+        LsHints.Add(HintChips.Create("Y", "#6BABFF", UiText.HintGrab));
+        LsHints.Add(HintChips.Create("B", "#FF6B9D", UiText.HintBack));
+        LsHints.Add(HintChips.Create("R", "#60C0FF", UiText.HintCry));
+
+        var manageChip = HintChips.Create("≡", "#F0C040", "管理");
+        manageChip.GestureRecognizers.Add(new TapGestureRecognizer
+        {
+            Command = new Command(() => OpenBankManageMenu()),
+        });
+        LsHints.Add(manageChip);
+    }
+
+    // ──────────────────────────────────────────────
+    //  存档切换（竖屏点顶部条 / 横屏点左下存档名）
+    // ──────────────────────────────────────────────
+
+    private SaveSwitcherSheet? _saveSwitcher;
+
+    private void OnSaveChipTapped(object sender, TappedEventArgs e) => _ = OpenSaveSwitcherAsync();
+
+    private async Task OpenSaveSwitcherAsync()
+    {
+        if (_session.SaveWriteBusy)
+        {
+            await DisplayAlertAsync("正在写入存档", "等这次写入完成再切换，避免写进错的存档。", "好");
+            return;
+        }
+        if (_moveMode || _session.PendingMove is not null)
+        {
+            await DisplayAlertAsync("先结束手上的移动",
+                "正在搬动宝可梦。切存档会取消这次移动（宝可梦不会丢在错的地方），先按 B 结束再切。", "好");
+            return;
+        }
+
+        if (_saveSwitcher is null)
+        {
+            _saveSwitcher = new SaveSwitcherSheet(_session, OnSavePickedAsync);
+            if (Content is Grid host)
+            {
+                Grid.SetRow(_saveSwitcher, 0);
+                Grid.SetColumn(_saveSwitcher, 0);
+                Grid.SetRowSpan(_saveSwitcher, 2);
+                Grid.SetColumnSpan(_saveSwitcher, 2);
+                host.Add(_saveSwitcher);
+            }
+        }
+        await _saveSwitcher.ShowAsync();
+    }
+
+    private async Task OnSavePickedAsync(SaveEntry entry)
+    {
+        var err = await SaveSwitchService.SwitchAsync(_session, entry);
+        if (err is not null)
+        {
+            await DisplayAlertAsync("切换失败", err, "OK");
+            return;
+        }
+
+        _selectedSlot = -1;
+        _moveMode     = false;
+        _movePk       = null;
+        _detailVisible = false;
+
+        FillSaveHeader();
+        _session.RescanNeeded = false;
+        LoadBox(_boxIndex);
+        BankCanvas.InvalidateSurface();
     }
 
     /// <summary>
@@ -81,6 +205,8 @@ public partial class BankPage : ContentPage
 
         UpdateModeBanner();
         FillSaveHeader();
+        if (Width > 0 && Height > 0)
+            ApplyResponsiveLayout(Width > Height);
         LoadBox(_boxIndex);
         BuildHintBar();
 
@@ -129,6 +255,7 @@ public partial class BankPage : ContentPage
             BankSaveGameLabel.Text    = "";
             BankSaveMetaLabel.Text     = "";
             BankGameIcon.Source        = null;
+            SyncLandscapeBottomBar();
             return;
         }
 
@@ -140,6 +267,8 @@ public partial class BankPage : ContentPage
         if (iconFile != null)
             BankGameIcon.Source = ImageSource.FromStream(
                 ct => FileSystem.OpenAppPackageFileAsync($"gameicons/{iconFile}").WaitAsync(ct));
+
+        SyncLandscapeBottomBar();
     }
 
     protected override void OnDisappearing()
@@ -555,6 +684,7 @@ public partial class BankPage : ContentPage
 
         try
         {
+            _session.SaveWriteBusy = true;
             // 阶段 1：写银行（先落盘，才允许清箱子）
             _bank.Deposit(_boxIndex, _cursorSlot, pk, persist: false);
             await _bank.SaveAsync();
@@ -611,6 +741,11 @@ public partial class BankPage : ContentPage
 
             UpdateModeBanner();
             LoadBox(_boxIndex);
+        }
+        finally
+        {
+            // 写入结束（成功或失败）都要放开切档闸门，避免一次失败把切换永久锁死
+            _session.SaveWriteBusy = false;
         }
     }
 
