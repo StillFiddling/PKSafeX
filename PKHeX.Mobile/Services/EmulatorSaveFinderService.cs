@@ -323,6 +323,39 @@ public static class EmulatorSaveFinderService
     }
 
     /// <summary>按目录名判断这根目录属于哪个模拟器（不猜内容，只看结构特征）。</summary>
+    /// <summary>
+    /// 按目录名判断这根目录属于哪个模拟器（不猜内容，只看结构特征）。
+    /// 命不中时再让 <see cref="ProbeSafFlavor"/> 看根下 1 层目录。
+    /// </summary>
+#if ANDROID
+    private static string ProbeSafFlavor(
+        global::Android.Content.ContentResolver resolver,
+        global::Android.Net.Uri treeUri,
+        string rootDocId)
+    {
+        var kids = ListChildrenTyped(resolver, treeUri, rootDocId);
+        bool has(string n) => kids.Any(k => k.IsDir
+            && string.Equals(ChildNameOf(k.DocId), n, StringComparison.OrdinalIgnoreCase));
+
+        if (has("Nintendo 3DS") || has("sdmc")) return "Azahar(3DS)";
+        if (has("nand")) return "Eden(NS)";
+        if (has("DraStic") || has("melonDS")) return "NDS";
+        if (has("RetroArch") || has("MyBoy")) return "GBA";
+
+        // 根下是 sdmc 以外的中间层（例如 3DS/sdmc 直接作为根）：再看一层
+        foreach (var k in kids)
+        {
+            if (!k.IsDir) continue;
+            var grand = ListChildrenTyped(resolver, treeUri, k.DocId);
+            bool g(string n) => grand.Any(x => x.IsDir
+                && string.Equals(ChildNameOf(x.DocId), n, StringComparison.OrdinalIgnoreCase));
+            if (g("Nintendo 3DS")) return "Azahar(3DS)";
+            if (g("save")) return "Eden(NS)";
+        }
+        return "";
+    }
+#endif
+
     private static string DetectPathFlavor(string root)
     {
         var name = Path.GetFileName(root).TrimEnd(Path.DirectorySeparatorChar).ToLowerInvariant();
@@ -357,6 +390,9 @@ public static class EmulatorSaveFinderService
         if (rootDocId == null) return new TemplateScanResult("", []);
 
         var flavor = DetectSafFlavor(root, rootDocId);
+        // docId 字符串认不出来（例如用户选的是 primary:3DS，里面才是 sdmc/Nintendo 3DS）
+        // 时，花一次 query 看根下 1 层目录名。否则模板对这类根目录完全不生效。
+        if (flavor.Length == 0) flavor = ProbeSafFlavor(resolver, treeUri, rootDocId);
         var uris = new List<string>();
         if (flavor.Length == 0) return new TemplateScanResult("", []);
 
