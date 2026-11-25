@@ -542,6 +542,17 @@ public partial class MainPage : ContentPage
         // 实测把 UI 线程占住 6 秒，期间点图鉴、点返回全被吞掉。
         // 现在整段丢到后台线程，主线程只负责最后一次性刷新列表。
         var entries = await Task.Run(async () => await _dirService.ScanAllAsync());
+
+        // 本轮扫描不完整（撞目录/文件上限、有目录读不到）时，不能用它去覆写
+        // 首页和缓存：否则又一次出现「刚进来少一条，过一会又回来」。
+        if (ScanReport.IsIncomplete && _session.LoadedSaves.Count > 0
+            && entries.Count < _session.LoadedSaves.Count)
+        {
+            DiagLog.Add($"[HOME] refresh incomplete ({ScanReport.IncompleteReason}), keep {_session.LoadedSaves.Count} vs {entries.Count}");
+            _session.RescanNeeded = false;
+            return;
+        }
+
         _session.LoadedSaves = entries;
         _session.RescanNeeded = false;
         ApplySaveEntries(entries);
@@ -586,6 +597,29 @@ public partial class MainPage : ContentPage
                 _gpNavigating = true;
                 SaveCardsList.SelectedItem = active;
                 _gpNavigating = false;
+            }
+            else
+            {
+                // 正在玩的那条存档这轮不在列表里（被删 / 扫描没读到）：
+                // 必须把选中态和 Hero 一起回落，否则会出现「高亮在旧卡、Hero 是空的」。
+                DiagLog.Add("[HOME] active save missing, fallback to first");
+                _selectedSave = null;
+                _lastHeroDisplayIndex = -2;      // 强制 Hero 重画
+                if (_saveCards.Count > 0)
+                {
+                    SetCardCursor(0);
+                    _gpNavigating = true;
+                    SaveCardsList.SelectedItem = _saveCards[0];
+                    _gpNavigating = false;
+                    _ = LoadSaveAsync(_saveCards[0].Entry);
+                }
+                else
+                {
+                    _session.ActiveSave          = null;
+                    _session.ActiveSaveFileUri   = "";
+                    _session.ActiveSaveFileName  = "";
+                    _session.ActiveSaveFingerprint = "";
+                }
             }
         }
 

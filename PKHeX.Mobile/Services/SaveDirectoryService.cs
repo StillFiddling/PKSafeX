@@ -12,7 +12,10 @@ public record SaveEntry(
     int BoxCount,
     int SlotCount,
     byte[] RawData,
-    DateTimeOffset LastModified);
+    DateTimeOffset LastModified,
+    // 连续多少次校验「找不到这个文件」。文件被真正删除时会计数，
+    // 达到阈值才从列表里移除，避免一次读失败就把存档卡弄丢。
+    int MissCount = 0);
 
 public class SaveDirectoryService
 {
@@ -273,6 +276,44 @@ public class SaveDirectoryService
         {
             try
             {
+                // ── 裸路径（直读兜底产出的都是这种）───────────────────────────
+                // 以前这里只会用 ContentResolver.OpenInputStream，遇到没有 scheme
+                // 的 /storage/.../main 会抛 FileNotFoundException，于是缓存校验
+                // 把「刚被游戏改写过」的那条存档整个丢掉 → 首页少一张卡。
+                var scheme = global::Android.Net.Uri.Parse(fileUri)?.Scheme ?? "";
+                if (scheme.Length == 0 || scheme.Equals("file", StringComparison.OrdinalIgnoreCase))
+                {
+                    var realPath = scheme.Length == 0
+                        ? fileUri
+                        : (global::Android.Net.Uri.Parse(fileUri)?.Path ?? fileUri);
+                    var info = new FileInfo(realPath);
+                    if (!info.Exists || info.Length == 0) return null;
+
+                    var data = File.ReadAllBytes(realPath);
+                    var rawData = data.ToArray();
+                    if (!PKHeX.Core.SaveUtil.TryGetSaveFile(data, out var sav))
+                    {
+                        ScanReport.Add($"跳过 {info.Name}：{FormatSize(data.Length)}，不是支持的存档格式");
+                        return null;
+                    }
+
+                    ScanReport.CountRecognized();
+                    return new SaveEntry(
+                        FileUri: realPath,
+                        FileName: info.Name,
+                        DirectoryUri: info.DirectoryName ?? realPath,
+                        Version: ResolveVersion(sav),
+                        Generation: sav.Generation,
+                        TrainerName: sav.OT,
+                        TrainerID: $"{sav.TID16}/{sav.SID16}",
+                        PlayTime: sav.PlayTimeString,
+                        BoxCount: sav.BoxCount,
+                        SlotCount: sav.SlotCount,
+                        RawData: rawData,
+                        LastModified: new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero));
+                }
+
+                // ── content:// 走系统查询 ────────────────────────────────────
                 var context = Android.App.Application.Context;
                 var uri = global::Android.Net.Uri.Parse(fileUri);
                 if (uri == null) return null;
@@ -281,13 +322,13 @@ public class SaveDirectoryService
                 if (stream == null) return null;
                 using var ms = new MemoryStream();
                 stream.CopyTo(ms);
-                var data = ms.ToArray();
-                if (data.Length == 0) return null;
+                var data2 = ms.ToArray();
+                if (data2.Length == 0) return null;
 
                 // Copy before TryGetSaveFile: Switch (Gen 8/9) saves are decrypted
                 // in-place by SwishCrypto, which would corrupt RawData for re-parsing.
-                var rawData = data.ToArray();
-                if (!PKHeX.Core.SaveUtil.TryGetSaveFile(data, out var sav)) return null;
+                var raw2 = data2.ToArray();
+                if (!PKHeX.Core.SaveUtil.TryGetSaveFile(data2, out var sav2)) return null;
 
                 // Query display name and last-modified timestamp
                 string[] proj = [
@@ -304,19 +345,29 @@ public class SaveDirectoryService
                     if (modMs > 0) lastMod = DateTimeOffset.FromUnixTimeMilliseconds(modMs);
                 }
 
+                // 记「文件所在的真实目录」，不能记成文件自己的 URI：
+                // 否则同一目录下多个 main 会被去重逻辑当成同一份存档的备份。
+                string dirUri;
+                try
+                {
+                    var docId = global::Android.Provider.DocumentsContract.GetDocumentId(uri);
+                    dirUri = ParentDocIdOf(docId) ?? fileUri;
+                }
+                catch { dirUri = fileUri; }
+
                 ScanReport.CountRecognized();
                 return new SaveEntry(
                     FileUri: fileUri,
                     FileName: name,
-                    DirectoryUri: fileUri,
-                    Version: ResolveVersion(sav),
-                    Generation: sav.Generation,
-                    TrainerName: sav.OT,
-                    TrainerID: $"{sav.TID16}/{sav.SID16}",
-                    PlayTime: sav.PlayTimeString,
-                    BoxCount: sav.BoxCount,
-                    SlotCount: sav.SlotCount,
-                    RawData: rawData,
+                    DirectoryUri: dirUri,
+                    Version: ResolveVersion(sav2),
+                    Generation: sav2.Generation,
+                    TrainerName: sav2.OT,
+                    TrainerID: $"{sav2.TID16}/{sav2.SID16}",
+                    PlayTime: sav2.PlayTimeString,
+                    BoxCount: sav2.BoxCount,
+                    SlotCount: sav2.SlotCount,
+                    RawData: raw2,
                     LastModified: lastMod);
             }
             catch (Exception ex)
@@ -430,7 +481,11 @@ public class SaveDirectoryService
                 {
                     var (parentId, depth) = queue.Dequeue();
                     if (!visitedDirs.Add(parentId)) continue;
-                    if (++scannedDirs > 500) break;
+                    if (++scannedDirs > 500)
+                    {
+                        ScanReport.MarkIncomplete($"目录数超过 500 上限（{ShortUri(dirUri)}）");
+                        break;
+                    }
 
                     global::Android.Net.Uri? childrenUri = null;
                     try
@@ -483,6 +538,7 @@ public class SaveDirectoryService
                                 if (stream == null)
                                 {
                                     ScanReport.Add($"读不到 {name}：没有读取权限（可能是 Android/data 下的目录）");
+                                    ScanReport.MarkIncomplete("有文件因权限读不到");
                                     continue;
                                 }
                                 using var ms = new MemoryStream();
@@ -528,6 +584,7 @@ public class SaveDirectoryService
                     catch (Exception ex)
                     {
                         ScanReport.Add($"子目录读取失败（深度 {depth}）：{ex.GetType().Name}");
+                        ScanReport.MarkIncomplete("有子目录读不到");
                     }
                 }
 
@@ -654,6 +711,7 @@ public class SaveDirectoryService
                 }
                 catch { }
             }
+            if (truncated) ScanReport.MarkIncomplete($"直读文件数超过 {MaxPathCandidates} 上限");
         }
         catch (Exception ex)
         {
@@ -735,6 +793,7 @@ public class SaveDirectoryService
                 }
                 catch { }
             }
+            if (truncated) ScanReport.MarkIncomplete($"main 快扫文件数超过 {MaxPathCandidates} 上限");
         }
         catch (Exception ex)
         {
@@ -743,27 +802,49 @@ public class SaveDirectoryService
         return entries;
     }
 
-    /// <summary>校验缓存里的条目：文件没变就直接沿用，变了才重新读。</summary>
+    /// <summary>
+    /// 校验缓存里的条目：文件没变就直接沿用，变了才重新读。
+    /// 关键约束（F2b）：<b>重读失败不等于文件没了</b>。只要还拿得到元信息，
+    /// 就把旧条目留着继续用；只有连续两次都「找不到文件」才真正移除，
+    /// 避免一次瞬时读失败（权限、被游戏占用、路径形态不支持）就把卡片弄丢。
+    /// </summary>
     public async Task<List<SaveEntry>> VerifyCachedAsync(List<SaveEntry> cached)
     {
+        const int MissLimit = 2;
         var result = new List<SaveEntry>();
+        int gone = 0, keptAfterFail = 0;
+
         foreach (var e in cached)
         {
             try
             {
                 var meta = await GetMetaAsync(e.FileUri);
-                if (meta is null) continue; // 文件已被删除/移走
+                if (meta is null)
+                {
+                    // 拿不到元信息：可能删了，也可能这一轮访问不到。累计次数再决定。
+                    var miss = e.MissCount + 1;
+                    if (miss >= MissLimit) { gone++; continue; }
+                    result.Add(e with { MissCount = miss });
+                    continue;
+                }
+
                 var (lastMod, size) = meta.Value;
                 bool sameTime = Math.Abs((lastMod - e.LastModified).TotalSeconds) < 2;
                 bool sameSize = size == e.RawData.Length;
-                if (sameTime && sameSize) { result.Add(e); continue; }
+                if (sameTime && sameSize) { result.Add(e with { MissCount = 0 }); continue; }
 
                 var fresh = await ScanFileAsync(e.FileUri);
-                if (fresh != null) result.Add(fresh);
+                if (fresh != null) { result.Add(fresh); continue; }
+
+                // 文件确实变了，但这一轮读不出来 → 保留旧内容，别丢卡片。
+                keptAfterFail++;
+                ScanReport.Add($"保留旧条目 {e.FileName}（本轮重读失败）");
+                result.Add(e with { MissCount = 0 });
             }
             catch { result.Add(e); }
         }
-        ScanReport.Add($"缓存校验：{cached.Count} 个 → 有效 {result.Count} 个");
+
+        ScanReport.Add($"缓存校验：{cached.Count} 个 → 有效 {result.Count} 个（丢失 {gone}，重读失败保留 {keptAfterFail}）");
         return result;
     }
 
@@ -848,6 +929,12 @@ public class SaveDirectoryService
     /// </summary>
     public async Task<List<SaveEntry>> ScanDirectoryOrPathAsync(string target)
     {
+        // 先做模拟器画像定向扫描（3DS / NS / NDS / GBA）：命中就按固定模板精确取档，
+        // 不再对这个根跑通用遍历 —— 这是 3DS 那种上千目录的树能秒出结果、且不撞
+        // 500 目录上限的关键。画像没命中、或模板没读到有效存档，才回落通用扫描。
+        var templated = await TryTemplateScanAsync(target);
+        if (templated != null) return templated;
+
         if (!string.IsNullOrWhiteSpace(target) && !target.StartsWith("content://"))
         {
             return await Task.Run(() =>
@@ -858,6 +945,33 @@ public class SaveDirectoryService
             });
         }
         return await ScanDirectoryAsync(target);
+    }
+
+    /// <summary>命中画像且真读到存档时返回结果；否则返回 null 表示「请走通用扫描」。</summary>
+    private async Task<List<SaveEntry>?> TryTemplateScanAsync(string target)
+    {
+        try
+        {
+            var tpl = await EmulatorSaveFinderService.ScanTemplateAsync(target);
+            if (tpl.Uris.Count == 0) return null;
+
+            ScanReport.Add($"画像 {tpl.Flavor} 命中：{tpl.Uris.Count} 个候选");
+            var hits = new List<SaveEntry>();
+            foreach (var u in tpl.Uris)
+            {
+                var entry = await ScanFileAsync(u);
+                if (entry != null) hits.Add(entry);
+            }
+            if (hits.Count > 0) return hits;
+
+            ScanReport.Add($"画像 {tpl.Flavor} 未读到有效存档，回落通用扫描");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            ScanReport.Add($"画像扫描失败，回落通用扫描：{ex.GetType().Name}");
+            return null;
+        }
     }
 
     private static string FormatSize(int bytes)

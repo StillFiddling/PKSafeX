@@ -16,6 +16,12 @@ public static class ScanReport
     public static int CandidateFiles { get; private set; }
     public static int RecognizedFiles { get; private set; }
 
+    /// <summary>
+    /// 本轮扫描是否「不完整」：撞了目录/文件上限，或有目录、文件读不到。
+    /// 不完整的结果不能当作权威列表去覆写首页和缓存（否则会少条目）。
+    /// </summary>
+    public static bool IsIncomplete { get; private set; }
+
     public static void Reset()
     {
         lock (_lock)
@@ -23,6 +29,19 @@ public static class ScanReport
             _lines.Clear();
             CandidateFiles = 0;
             RecognizedFiles = 0;
+            IncompleteReason = null;
+        }
+    }
+
+    /// <summary>第一次不完整的原因，报告里会写出来。</summary>
+    public static string? IncompleteReason { get; private set; }
+
+    public static void MarkIncomplete(string reason)
+    {
+        lock (_lock)
+        {
+            IncompleteReason ??= reason;
+            IsIncomplete = true;
         }
     }
 
