@@ -227,14 +227,19 @@ public partial class GamePage
             LoadBox(_boxIndex);
 
             if (result == SaveWriteResult.MergedIntoLatest)
-                await DisplayAlertAsync("已放生（含并最新进度）",
-                    "检测到你在游戏里已经保存过更新的存档。\n本次只把这一格清空合并进最新存档，其它进度没有被覆盖。",
-                    "OK");
+            {
+                // test11 问题7：合并改轻提示，不再弹窗打断
+                Toast("已合并到最新存档");
+                RefreshCanvasAfterDialog();
+            }
         }
         catch (Exception ex)
         {
+            // 同上：回滚换了 SaveFile 实例，_sav 要重新指向会话里那份
+            _sav = _session.ActiveSave ?? _sav;
             LoadBox(_boxIndex);
             await DisplayAlertAsync("放生失败，存档未改动", ex.Message, "OK");
+            RefreshCanvasAfterDialog();
         }
     }
 }

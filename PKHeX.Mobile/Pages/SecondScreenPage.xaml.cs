@@ -321,30 +321,34 @@ public partial class SecondScreenPage : ContentPage
         var normalBg     = Color.FromArgb(light ? "#FFFFFF" : "#131B35");
         var normalStroke = Color.FromArgb(light ? "#E0E4EC" : "#0DFFFFFF");
 
-        bool primaryFocused = focusSection == 1 && actionCursor == 0;
-        Menu_OpenBoxes.Background = new LinearGradientBrush
-        {
-            StartPoint = new Point(0, 0), EndPoint = new Point(1, 1),
-            GradientStops = [
-                new GradientStop(Color.FromArgb("#EAF5FF"), 0f),
-                new GradientStop(Color.FromArgb("#CCE8FF"), 1f),
-            ],
-        };
-        Menu_OpenBoxes.Stroke = primaryFocused ? Color.FromArgb("#5AAAD0") : Colors.Transparent;
-
-        Border[] tiles = [Menu_Search, Menu_Gifts, Menu_Export, Menu_Bank, Menu_Dex];
+        Border[] tiles = [Menu_Gifts, Menu_Export, Menu_Boxes, Menu_Bank, Menu_Dex];
         for (int i = 0; i < tiles.Length; i++)
         {
-            bool focused = focusSection == 1 && actionCursor == i + 1;
+            bool focused = focusSection == 1 && actionCursor == i;
             tiles[i].BackgroundColor = focused ? focusBg : normalBg;
             tiles[i].Stroke          = focused ? focusStroke : normalStroke;
         }
     }
 
+    /// <summary>副屏存档列表上方的小齿轮：双屏模式下打开设置页（主屏 Shell 上跳转）。</summary>
+    private void OnMenuSettingsTapped(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                await Shell.Current.GoToAsync(nameof(SettingsPage));
+            }
+            catch (Exception ex)
+            {
+                Services.CrashLog.Write("SecondScreen.Settings", ex);
+            }
+        });
+    }
+
     // ──────────────────────────────────────────────
     //  Box grid painting
     // ──────────────────────────────────────────────
-
     private void RecalcGridLayout(int w, int h)
     {
         if (w == _lastW && h == _lastH && _slotRects.Length == Columns * Rows) return;

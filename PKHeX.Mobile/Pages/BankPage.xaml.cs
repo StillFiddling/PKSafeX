@@ -67,6 +67,19 @@ public partial class BankPage : ContentPage
             BankInfoBar.IsVisible  = false;
             LsBottomBar.IsVisible  = true;
             NavRow.Padding         = new Thickness(12, 2, 12, 2);
+
+            // 模式横幅：横屏不占行，搬进画布行做左上角浮层（照箱子页搜索栏的做法：
+            // 挂在 Row4 + ZIndex，不参与行测量；Row3 此时只剩隐藏的占位 → Auto 高度归 0，画布变高）。
+            // test11 问题6/S1：靠左，与 ◀ 箭头左沿对齐（12dp，同箱子页搜索栏口径）；
+            // HeightRequest 放开为自动高度，避免固定 24dp 把两行文字裁掉（S2）。
+            Grid.SetRow(ModeBanner, 4);
+            ModeBanner.ZIndex            = 12;
+            ModeBanner.InputTransparent  = true;               // 不吃画布点击
+            ModeBanner.HorizontalOptions = LayoutOptions.Start;
+            ModeBanner.VerticalOptions   = LayoutOptions.Start;
+            ModeBanner.HeightRequest     = -1;
+            ModeBanner.Margin            = new Thickness(12, 2, 0, 0);
+
             FillSaveHeader();
             BuildLandscapeHints();
         }
@@ -77,6 +90,28 @@ public partial class BankPage : ContentPage
             BankInfoBar.IsVisible  = true;
             LsBottomBar.IsVisible  = false;
             NavRow.Padding         = new Thickness(16, 12, 16, 8);
+
+            // 竖屏还原：回到 Row3 行内、叠在 44dp 占位里（与原设计一致）
+            Grid.SetRow(ModeBanner, 3);
+            ModeBanner.ZIndex            = 0;
+            ModeBanner.InputTransparent  = false;
+            ModeBanner.HorizontalOptions = LayoutOptions.Fill;
+            ModeBanner.VerticalOptions   = LayoutOptions.Center;
+            ModeBanner.HeightRequest     = -1;
+            ModeBanner.Margin            = new Thickness(12, 0, 12, 6);
+        }
+
+        // 横幅的可视状态依赖 _isLandscape（旧代码在 OnAppearing 里早于布局调用，横屏进场会闪一帧）
+        UpdateModeBanner();
+        BankCanvas.InvalidateSurface();
+
+        // 详情浮层开着时转屏：先填内容再量高（否则量到旧内容）
+        if (_detailVisible && _detailPk is { } detailPk)
+        {
+            ApplyDetailSheetSize();
+            UpdateDetailContent(detailPk);
+            ApplyDetailMovesReserve();
+            ApplyDetailSheetHeight();
         }
     }
 
@@ -102,17 +137,21 @@ public partial class BankPage : ContentPage
     private void BuildLandscapeHints()
     {
         if (LsHints.Count > 0) return;
-        LsHints.Add(HintChips.Create("A", "#34D990", UiText.HintSelectPlace));
-        LsHints.Add(HintChips.Create("Y", "#6BABFF", UiText.HintGrab));
-        LsHints.Add(HintChips.Create("B", "#FF6B9D", UiText.HintBack));
-        LsHints.Add(HintChips.Create("R", "#60C0FF", UiText.HintCry));
 
-        var manageChip = HintChips.Create("≡", "#F0C040", "管理");
-        manageChip.GestureRecognizers.Add(new TapGestureRecognizer
+        LsHints.Add(HintChips.Create("A", "#34D990", UiText.HintSelectPlace, HandleActivate));
+        LsHints.Add(HintChips.Create("Y", "#6BABFF", UiText.HintGrab, () =>
         {
-            Command = new Command(() => OpenBankManageMenu()),
-        });
-        LsHints.Add(manageChip);
+            if (_cursorSlot < _currentSlots.Length && _currentSlots[_cursorSlot]?.Species > 0)
+                EnterWithdrawMode();
+        }));
+        LsHints.Add(HintChips.Create("B", "#FF6B9D", UiText.HintBack, () =>
+        {
+            _session.PendingMove = null;
+            _ = SwapToGame();
+        }));
+        LsHints.Add(HintChips.Create("R", "#60C0FF", UiText.HintCry, PlayCurrentSlotCry));
+
+        // 用户定稿：银行页不需要「管理/设置」徽章，横屏这一枚已删除（竖屏 HintBar 仍保留 4 枚）
     }
 
     // ──────────────────────────────────────────────
@@ -139,7 +178,7 @@ public partial class BankPage : ContentPage
 
         if (_saveSwitcher is null)
         {
-            _saveSwitcher = new SaveSwitcherSheet(_session, OnSavePickedAsync);
+            _saveSwitcher = new SaveSwitcherSheet(_session, OnSavePickedAsync, UiText.BankSwitchNote);
             if (Content is Grid host)
             {
                 Grid.SetRow(_saveSwitcher, 0);
@@ -172,7 +211,6 @@ public partial class BankPage : ContentPage
         BankCanvas.InvalidateSurface();
     }
 
-    /// <summary>
     //  画布顶边/底边不再用代码推算：XAML 里用一个与箱子页搜索行同高同边距的透明占位
     //  （44 高 + Margin 12,0,12,6）补齐银行页缺失的那一行，画布直接填满 `*` 行，
     //  两页顶部块与底部信息条结构一致，位置自然对齐，无迭代、无首帧跳变。
@@ -280,6 +318,9 @@ public partial class BankPage : ContentPage
 #endif
         ThemeService.ThemeChanged -= OnThemeChanged;
         BackCoordinator.Unbind(HandleBackAction);
+#if ANDROID
+        CryService.Stop();     // 离开银行页停声：修掉播放器从不释放与切页残留
+#endif
         _paintReady = false;   // 下次进场重新等布局定型
     }
 
@@ -292,6 +333,7 @@ public partial class BankPage : ContentPage
         if (_detailVisible)
         {
             _ = HideDetailAsync();
+            DeselectSlot();     // 清选中态，避免关卡片后格子里还留描边
             return true;
         }
 
@@ -333,7 +375,7 @@ public partial class BankPage : ContentPage
     private void OnPrevBoxTapped(object? sender, TappedEventArgs e) => OnPrevBox(sender, EventArgs.Empty);
     private void OnNextBoxTapped(object? sender, TappedEventArgs e) => OnNextBox(sender, EventArgs.Empty);
 
-    private void OnPrevBox(object sender, EventArgs e)
+    private void OnPrevBox(object? sender, EventArgs e)
     {
         if (_boxIndex <= 0) return;
         _boxIndex--;
@@ -341,7 +383,7 @@ public partial class BankPage : ContentPage
         LoadBox(_boxIndex);
     }
 
-    private void OnNextBox(object sender, EventArgs e)
+    private void OnNextBox(object? sender, EventArgs e)
     {
         if (_boxIndex >= _bank.Boxes.Count - 1) return;
         _boxIndex++;
@@ -565,8 +607,7 @@ public partial class BankPage : ContentPage
             case KeyMap.BankInKey: _ = SwapToGame(+1); break;
 
             case KeyMap.CryKey:
-                if (_cursorSlot < _currentSlots.Length && _currentSlots[_cursorSlot]?.Species > 0)
-                    PlayCry(_currentSlots[_cursorSlot]!.Species);
+                PlayCurrentSlotCry();   // 统一入口：会清防抖，同只连按也能重播
                 break;
 
             case Android.Views.Keycode.ButtonSelect:
@@ -601,9 +642,11 @@ public partial class BankPage : ContentPage
         }
 
         // Withdraw move mode: drop grabbed Pokémon (swap with slot contents)
+        // test11 问题5：银行页内部换位不再弹确认，按 A 直接生效（与箱子页内部换位一致）。
+        // 银行槽存的只是原始字节、不碰存档，换错位置再换回来即可。
         if (_moveMode && _movePk != null)
         {
-            await ConfirmBankInternalMoveAsync();
+            await ExecuteWithdrawDrop();
             return;
         }
 
@@ -615,8 +658,8 @@ public partial class BankPage : ContentPage
         }
         else
         {
+            // 空白格只清选中，不再每次弹「不能新建」提示（与箱子页行为一致）
             DeselectSlot();
-            _ = ShowTipAsync("银行里不能新建宝可梦，只能在箱子里点 存入银行 把宝可梦存进来。");
         }
     }
 
@@ -644,12 +687,19 @@ public partial class BankPage : ContentPage
         if (pk is null) return;
 
         var occ = _cursorSlot >= 0 && _cursorSlot < _currentSlots.Length ? _currentSlots[_cursorSlot] : null;
+
+        // 问题3【严重】目标格已有宝可梦：直接拦下，绝不覆盖。
+        // 旧逻辑无条件 Deposit 并立刻落盘，被顶掉的宝可梦在银行之外没有任何去处；
+        // 若它的世代高于当前存档，连 EntityConverter 都转不过来，等于彻底消失。
+        if (occ is not null && occ.Species > 0)
+        {
+            await WarnSlotOccupiedAsync(SpeciesNameOf(occ), party: false);
+            return;
+        }
+
         var target = $"银行 {_boxIndex + 1} 第 {_cursorSlot + 1} 格";
 
-        var msg = occ?.Species > 0
-            ? $"{SpeciesNameOf(pk)} Lv.{pk.CurrentLevel} 将存入 {target}。\n该格现有 {SpeciesNameOf(occ)}，会被替换。"
-            : $"{SpeciesNameOf(pk)} Lv.{pk.CurrentLevel} 将存入 {target}。";
-
+        var msg = $"{SpeciesNameOf(pk)} Lv.{pk.CurrentLevel} 将存入 {target}。";
         msg += "\n\n确认后：写入银行 → 清空箱子原格并写回存档。\n取消后：宝可梦原样留在箱子，不做任何改动。";
 
         _confirmingDeposit = true;
@@ -666,12 +716,10 @@ public partial class BankPage : ContentPage
         if (!ok)
         {
             // 取消存入：清掉待存入状态，原格不动，停留在银行页
-            _session.PendingMove       = null;
-            _session.PendingFromBank   = false;
-            _session.PendingSourceBox  = -1;
-            _session.PendingSourceSlot = -1;
+            ClearPendingDeposit();
             UpdateModeBanner();
             LoadBox(_boxIndex);
+            RefreshCanvasAfterDialog();
             return;
         }
 
@@ -687,7 +735,20 @@ public partial class BankPage : ContentPage
             _session.SaveWriteBusy = true;
             // 阶段 1：写银行（先落盘，才允许清箱子）
             _bank.Deposit(_boxIndex, _cursorSlot, pk, persist: false);
-            await _bank.SaveAsync();
+
+            // 1.1.1 R1：银行没落盘就绝不能清箱子源格，否则宝可梦只在内存里，
+            // 重启后消失。失败时只撤销本次这一格（不 reload，免得和即发即忘的
+            // Save() 抢内存），然后交给专用 catch 提示。
+            if (!await _bank.TrySaveAsync())
+            {
+                if (prevOcc is not null && prevOcc.Species > 0)
+                    _bank.Deposit(_boxIndex, _cursorSlot, prevOcc, persist: false);
+                else
+                    _bank.ClearSlot(_boxIndex, _cursorSlot, persist: false);
+
+                throw new BankSaveFailedException(_bank.LastError);
+            }
+
             bankWritten = true;
 
             // 阶段 2：清空箱子来源并写回存档。
@@ -711,36 +772,58 @@ public partial class BankPage : ContentPage
                 merged = result == SaveWriteResult.MergedIntoLatest;
             }
 
-            _session.PendingMove       = null;
-            _session.PendingFromBank   = false;
-            _session.PendingSourceBox  = -1;
-            _session.PendingSourceSlot = -1;
-
+            ClearPendingDeposit();
             UpdateModeBanner();
             LoadBox(_boxIndex);
 
             if (merged)
-                await DisplayAlertAsync("已存入（含并最新进度）",
-                    "检测到你在游戏里已经保存过比软件更新的存档。\n本次操作只把这一格的改动合并进最新存档，你在游戏里的进度没有被覆盖。",
-                    "OK");
+            {
+                // test11 问题7：合并改轻提示，不再弹窗打断
+                await ShowTipAsync("已合并到最新存档");
+                RefreshCanvasAfterDialog();
+            }
+            else
+                RefreshCanvasAfterDialog();
+        }
+        catch (BankSaveFailedException ex)
+        {
+            // 银行没写进磁盘：存档一字未动，宝可梦仍在箱子里；银行内存已在上面回滚。
+            // 文案要跟「存档写失败」分开，否则用户无法判断到底是哪边出了问题。
+            ClearPendingDeposit();
+            UpdateModeBanner();
+            LoadBox(_boxIndex);
+
+            var reason = string.IsNullOrWhiteSpace(ex.Message) ? "" : $"\n\n原因：{ex.Message}";
+            await DisplayAlertAsync("存入失败",
+                $"软件的宝可梦仓库（bank.json）没能写入磁盘，宝可梦仍留在箱子里，存档没有任何改动。{reason}\n\n请确认手机存储空间充足后重试。",
+                "OK");
+
+            RefreshCanvasAfterDialog();
         }
         catch (Exception ex)
         {
-            // 回滚：银行槽恢复原样，箱子不动
+            // 回滚：银行槽恢复原样。
+            // 箱子来源格由 SaveSyncService 的事务快照负责还原（内存存档已回滚，
+            // 这里不需要也不应再改 _session.ActiveSave，避免出现两套回滚互相覆盖）。
             if (bankWritten)
             {
                 if (prevOcc is not null && prevOcc.Species > 0)
                     _bank.Deposit(_boxIndex, _cursorSlot, prevOcc, persist: false);
                 else
                     _bank.ClearSlot(_boxIndex, _cursorSlot, persist: false);
-                await _bank.SaveAsync();
+                await _bank.TrySaveAsync();   // 尽力回滚；失败只记诊断，不再静默
             }
+
+            // 问题1：失败等价于"取消存入"——先清掉待存入状态再弹窗，
+            // 否则弹窗关掉后仍显示「存入中」，A 键还能再次触发确认。
+            ClearPendingDeposit();
+            UpdateModeBanner();
+            LoadBox(_boxIndex);
 
             await DisplayAlertAsync("存入失败，已回退",
                 $"写回存档失败，宝可梦仍留在箱子里，银行未做改动。\n\n{ex.Message}", "OK");
 
-            UpdateModeBanner();
-            LoadBox(_boxIndex);
+            RefreshCanvasAfterDialog();
         }
         finally
         {
@@ -749,44 +832,61 @@ public partial class BankPage : ContentPage
         }
     }
 
-    // ──────────────────────────────────────────────
-    //  银行内部移动（换位）确认
-    // ──────────────────────────────────────────────
-
-    private bool _confirmingInternal;
-
-    private async Task ConfirmBankInternalMoveAsync()
+    /// <summary>清掉待存入状态四件套（存入成功/取消/失败统一走这里）。</summary>
+    private void ClearPendingDeposit()
     {
-        if (_confirmingInternal || _movePk is null) return;
-
-        var pk = _movePk;
-        var dest = _cursorSlot >= 0 && _cursorSlot < _currentSlots.Length ? _currentSlots[_cursorSlot] : null;
-        var target = $"银行 {_boxIndex + 1} 第 {_cursorSlot + 1} 格";
-
-        var msg = dest?.Species > 0
-            ? $"{SpeciesNameOf(pk)} 将移动到 {target}，与该格的 {SpeciesNameOf(dest)} 互换。"
-            : $"{SpeciesNameOf(pk)} 将移动到 {target}，原格子会清空。";
-
-        _confirmingInternal = true;
-        bool ok;
-        try
-        {
-            ok = await DisplayAlertAsync("确认移动？", msg + "\n\n取消则保持原位，不做任何改动。", "确认移动", "取消");
-        }
-        finally
-        {
-            _confirmingInternal = false;
-        }
-
-        if (!ok)
-        {
-            CancelMoveMode();
-            LoadBox(_boxIndex);
-            return;
-        }
-
-        ExecuteWithdrawDrop();
+        _session.PendingMove       = null;
+        _session.PendingFromBank   = false;
+        _session.PendingSourceBox  = -1;
+        _session.PendingSourceSlot = -1;
     }
+
+    /// <summary>
+    /// 弹窗遮罩撤下后补一次重绘：LoadBox 的 InvalidateSurface 发生在弹窗还盖着的时候，
+    /// 遮罩撤走时 Skia 不会自动重画，会留下半截格子的残影（下一帧再补一次更稳）。
+    /// </summary>
+    private void RefreshCanvasAfterDialog()
+    {
+        BankCanvas.InvalidateSurface();
+        Dispatcher.Dispatch(async () =>
+        {
+            await Task.Delay(40);
+            BankCanvas.InvalidateSurface();
+        });
+    }
+
+    /// <summary>
+    /// 问题3：目标位置已有宝可梦的统一拦截。提示后把光标跳到本箱第一个空格，
+    /// 让用户直接换个位置按 A，不用自己找。
+    /// </summary>
+    private async Task WarnSlotOccupiedAsync(string occupantName, bool party)
+    {
+        var hint = party ? "请更换一个位置" : "请更换一个空格";
+        await DisplayAlertAsync("这个位置已有宝可梦",
+            $"当前位置已有 {occupantName}，{hint}", "好");
+
+        if (party) return;
+
+        var empty = _bank.FindFirstEmpty(_boxIndex);
+        if (empty >= 0 && empty < _currentSlots.Length &&
+            (_currentSlots[empty] is null || _currentSlots[empty]!.Species == 0) &&
+            empty != _cursorSlot)
+        {
+            // S3：光标跳格后，原来的选中/详情浮层还指着旧格子，先清掉再跳
+            if (_detailVisible) _ = HideDetailAsync();
+            DeselectSlot();
+
+            _cursorSlot = empty;
+            UpdateHoverLabel();
+            Haptic();   // S4：跳格给一次触觉反馈，避免光标无声瞬移
+        }
+
+        RefreshCanvasAfterDialog();
+    }
+
+    // ──────────────────────────────────────────────
+    //  银行内部移动（换位）：test11 问题5 起改为无感交换，不再弹确认
+    // ──────────────────────────────────────────────
 
     private void EnterWithdrawMode()
     {
@@ -798,16 +898,26 @@ public partial class BankPage : ContentPage
         UpdateModeBanner();
     }
 
-    private void ExecuteWithdrawDrop()
+    private async Task ExecuteWithdrawDrop()
     {
-        // Move grabbed Pokémon to the cursor slot (current box).
-        // Clear or swap the original source slot, which may be in a different box.
+        // 把手上这只放到光标格；源格（可能在其他箱）清空或与目标格互换。
         var destPk = _currentSlots[_cursorSlot];
+
+        // 原地放回：源格 == 目标格，什么都不用做，直接退出换位模式
+        if (_moveSourceBox == _boxIndex && _moveSourceSlot == _cursorSlot)
+        {
+            CancelMoveMode();
+            LoadBox(_boxIndex);
+            return;
+        }
+
         if (destPk?.Species > 0)
-            _bank.Deposit(_moveSourceBox, _moveSourceSlot, destPk); // swap dest -> source
+            _bank.Deposit(_moveSourceBox, _moveSourceSlot, destPk, persist: false);   // 目标格那只换回源格
         else
-            _bank.ClearSlot(_moveSourceBox, _moveSourceSlot);       // vacate source
-            _bank.Deposit(_boxIndex, _cursorSlot, _movePk!);            // place grabbed -> dest
+            _bank.ClearSlot(_moveSourceBox, _moveSourceSlot, persist: false);         // 源格腾空
+
+        _bank.Deposit(_boxIndex, _cursorSlot, _movePk!, persist: false);              // 手上这只落到目标格
+        await _bank.SaveAsync();                                                      // 一次落盘，避免中间态
         CancelMoveMode();
         LoadBox(_boxIndex);
     }

@@ -138,8 +138,6 @@ public partial class WelcomePage : ContentPage
     //  Static helper
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static bool _shownThisSession;
-
     public static bool ShouldShowWelcome()
         => false; // 初始化向导已取消：首次安装也直接进首页
 
@@ -876,7 +874,6 @@ public partial class WelcomePage : ContentPage
 
     private async Task FinishAsync()
     {
-        _shownThisSession = true;
         Preferences.Default.Set("onboarding_complete", true);
         await Shell.Current.GoToAsync("..", false);
     }

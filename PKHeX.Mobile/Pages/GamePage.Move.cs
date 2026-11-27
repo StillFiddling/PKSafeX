@@ -31,7 +31,6 @@ public partial class GamePage
     }
 
     private bool _moveExecuting;
-    private bool _staleNoticeOnceShown;
 
     private async void ExecuteMove()
     {
@@ -98,9 +97,31 @@ public partial class GamePage
             ? $"队伍第 {_cursorSlot + 1} 位"
             : $"箱子 {_boxIndex + 1} 第 {_cursorSlot + 1} 格";
 
-        var msg = dest?.Species > 0
-            ? $"{MoveSpeciesName(pk)} Lv.{pk.CurrentLevel} 将从银行取出，放入{destName}。\n该位置现有 {MoveSpeciesName(dest)}，确认后会把它换回银行原格。"
-            : $"{MoveSpeciesName(pk)} Lv.{pk.CurrentLevel} 将从银行取出，放入{destName}。";
+        // 问题3【严重】目标位置已有宝可梦：直接拦下。
+        // 旧行为是把被顶出来的那只"换回银行原格"，看起来就是两只调换；
+        // 用户定稿改为与存入同一套提示，换位置再放。银行与存档都不动。
+        if (dest is not null && dest.Species > 0)
+        {
+            var empty   = FirstEmptySlotInBox();
+            var hint    = _boxIndex == -1 ? "请更换一个位置" : "请更换一个空格";
+            await DisplayAlertAsync("这个位置已有宝可梦",
+                $"当前位置已有 {MoveSpeciesName(dest)}，{hint}", "好");
+
+            if (empty >= 0 && empty != _cursorSlot)
+            {
+                _cursorSlot = empty;
+                UpdateTopPanel();
+                UpdateInfoBar();
+                BoxCanvas.InvalidateSurface();
+                _secondary.UpdateCursor(_cursorSlot, _selectedSlot, _moveMode, _movePk, _boxIndex);
+                Haptic();   // S4：跳格给一次触觉反馈
+            }
+
+            RefreshCanvasAfterDialog();
+            return;   // 保持取出模式，宝可梦仍在手上、银行未改
+        }
+
+        var msg = $"{MoveSpeciesName(pk)} Lv.{pk.CurrentLevel} 将从银行取出，放入{destName}。";
 
         msg += "\n\n确认后：先写回存档，成功后才清空银行原格。\n取消后：宝可梦原样留在银行，不做任何改动。";
 
@@ -116,6 +137,7 @@ public partial class GamePage
         _moveExecuting = true;
         _session.SaveWriteBusy = true;
         bool merged = false;
+        bool bankClearFailed = false;
         try
         {
             // 2) 放入目标格，并安全写回：若磁盘存档比内存新（玩家在游戏里又存过），
@@ -145,7 +167,16 @@ public partial class GamePage
                     bank.Deposit(srcBox, srcSlot, dest, persist: false); // 目标格原来那只换回银行
                 else
                     bank.ClearSlot(srcBox, srcSlot, persist: false);
-                await bank.SaveAsync();
+
+                // 1.1.1 R3：银行这一步失败不能让异常冒到 catch——那里写的是
+                // 「箱子没有变化」，而此刻存档其实已经写成功了，是假话。
+                if (!await bank.TrySaveAsync())
+                {
+                    // 内存恢复成「银行还留着这只」，与磁盘保持一致；
+                    // 用取出的原始 pk（不是形态转换后的 target），字节才不变。
+                    bank.Deposit(srcBox, srcSlot, pk, persist: false);
+                    bankClearFailed = true;
+                }
             }
 
             _session.PendingSourceBox  = -1;
@@ -154,18 +185,16 @@ public partial class GamePage
         }
         catch (Exception ex)
         {
-            // 回滚：把目标格还原成取出前的样子（银行没动）
-            var restore = dest?.Species > 0 ? dest : _sav.BlankPKM;
-            if (_boxIndex == -1)
-                _sav.SetPartySlotAtIndex(restore, _cursorSlot);
-            else
-                _sav.SetBoxSlotAtIndex(restore, _boxIndex, _cursorSlot);
+            // 内存存档已由 SaveSyncService 回滚，但回滚会换新的 SaveFile 实例，
+            // 这里必须把 _sav 重新指向会话里的那份，否则界面会继续画被改脏的旧对象
+            _sav = _session.ActiveSave ?? _sav;
 
             CancelMoveMode();
             LoadBox(_boxIndex);
 
             await DisplayAlertAsync("取出失败，已回退",
                 $"写回存档失败，宝可梦仍留在银行，箱子没有变化。\n\n{ex.Message}", "OK");
+            RefreshCanvasAfterDialog();
             return;
         }
         finally
@@ -179,13 +208,48 @@ public partial class GamePage
         _previewSpecies = -1;
         LoadBox(_boxIndex);
 
-        if (merged && !_staleNoticeOnceShown)
+        if (bankClearFailed)
         {
-            _staleNoticeOnceShown = true;
-            await DisplayAlertAsync("已取出（含并最新进度）",
-                "检测到你在游戏里已经保存过比软件更新的存档。\n本次操作只把这一格的改动合并进最新存档，你在游戏里的进度没有被覆盖。",
+            await DisplayAlertAsync("已取出，但仓库没清理",
+                $"宝可梦已写入{destName}，存档写回成功。\n\n"
+                + "软件仓库（bank.json）保存失败，银行原格仍留着同一只的副本。"
+                + "请到银行页把那一格删掉，避免重复。",
                 "OK");
+            RefreshCanvasAfterDialog();
+            return;
         }
+
+        if (merged)
+        {
+            // test11 问题7：合并本身是正常兜底，不该用弹窗打断，改成轻提示
+            Toast("已合并到最新存档");
+            RefreshCanvasAfterDialog();
+        }
+    }
+
+    /// <summary>本次箱子里第一个空格的下标；没有空格返回 -1。</summary>
+    private int FirstEmptySlotInBox()
+    {
+        for (int i = 0; i < _currentBox.Length; i++)
+        {
+            var pk = _currentBox[i];
+            if (pk is null || pk.Species == 0) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// 弹窗遮罩撤下后补一次重绘：弹窗打开前调用的 LoadBox 重绘会被遮罩盖住，
+    /// 遮罩撤走时 Skia 不会自动重画，会留下半截格子的残影。
+    /// </summary>
+    private void RefreshCanvasAfterDialog()
+    {
+        BoxCanvas.InvalidateSurface();
+        Dispatcher.Dispatch(async () =>
+        {
+            await Task.Delay(40);
+            BoxCanvas.InvalidateSurface();
+        });
     }
 
     private async Task SwapToBank(int dir)

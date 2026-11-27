@@ -22,11 +22,21 @@ public static class UiText
     public const string HintSelect     = "选中";
     public const string HintSelectPlace = "选中/放入";
     public const string HintGrab       = "抓取";
+    public const string HintGrabOrGift = "抓取/礼物";
     public const string HintBack       = "返回";
     public const string HintSave       = "保存";
     public const string HintCry        = "叫声";
     public const string HintEdit       = "编辑";
+    public const string HintManage     = "管理";
+    public const string HintView       = "视图";
+    public const string KeyStartChar   = "Start";
+    public const string KeySelectChar  = "Select";
     public const string HintSearch     = "搜索";
+    public const string HintSettings   = "设置";
+
+    // ── 存档切换浮层 ──
+    public const string BoxSwitchNote  = "切换后箱子页会载入所选存档，未保存的改动会先写回原存档。";
+    public const string BankSwitchNote = "银行里的宝可梦是全局共用的，切换存档不会改变银行内容。";
 
     // ── 箱子页 ──
     public const string SearchSpecies   = "搜索物种…";
@@ -45,6 +55,8 @@ public static class UiText
 
     // ── 首页 ──
     public const string QuitConfirm = "再按一次 B 键退出软件";
+    public const string PickSave    = "先在上方选一张存档";
+    public const string DualUnsupported = "暂不支持双屏设备，已按单屏横屏模式运行";
     public const string SaveCount   = "存档文件";
 
     // ── 宝可梦编辑页 ──

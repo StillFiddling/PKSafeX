@@ -14,6 +14,9 @@ public static class ScreenOrientationService
 {
     public const string KeyOrientation = "screen_orientation";
 
+    /// <summary>双屏机首次安装时是否已经种过横屏默认值。</summary>
+    public const string KeyDualLandscapeSeeded = "screen_orientation_dual_seeded";
+
     public const string ModeAuto = "auto";
     public const string ModePortrait = "portrait";
     public const string ModeLandscape = "landscape";
@@ -25,7 +28,28 @@ public static class ScreenOrientationService
         Microsoft.Maui.Storage.Preferences.Default.Get(KeyOrientation, DefaultMode);
 
     /// <summary>启动时按偏好应用一次。</summary>
-    public static void ApplySaved() => Apply(Current);
+    public static void ApplySaved()
+    {
+        // 双屏机（但双屏支持暂时关闭）：首次安装默认走横屏，让主屏用上横屏单栏版式。
+        // 只种一次默认值，玩家之后在设置里选了别的方向就不再覆盖。
+        try
+        {
+            if (!Services.AppFlags.DualScreenEnabled && DualDisplayProbe.HasSecondaryDisplay()
+                && !Microsoft.Maui.Storage.Preferences.Default.Get(KeyDualLandscapeSeeded, false))
+            {
+                Microsoft.Maui.Storage.Preferences.Default.Set(KeyDualLandscapeSeeded, true);
+                Set(ModeLandscape);
+                PKHeX.Mobile.Services.DiagLog.Add("[ORIENT] dual hardware detected with dual-screen disabled -> default landscape");
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            PKHeX.Mobile.Services.CrashLog.Write("ScreenOrientationService.ApplySaved", ex);
+        }
+
+        Apply(Current);
+    }
 
     /// <summary>写入偏好并立刻应用。</summary>
     public static void Set(string mode)

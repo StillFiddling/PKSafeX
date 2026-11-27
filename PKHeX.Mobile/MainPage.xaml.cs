@@ -188,7 +188,7 @@ public partial class MainPage : ContentPage
         });
         TryStep("Secondary.Show", () => _secondary.Show());
 
-        _actionTiles = [Tile_Gifts, Tile_Export, Tile_Bank, Tile_Dex, Tile_Settings];
+        _actionTiles = [Tile_Gifts, Tile_Export, Tile_Boxes, Tile_Bank, Tile_Dex];
         _partyImages  = [Party0, Party1, Party2, Party3, Party4, Party5];
 
         TryStep("Secondary.IsAvailable", () =>
@@ -200,6 +200,20 @@ public partial class MainPage : ContentPage
 
         // 主线程卡顿探针：判断「点不动」到底是主线程被占，还是输入/导航本身丢失
         DiagLog.StartWatchdog();
+
+#if ANDROID
+        // 双屏机但双屏支持暂时关闭：提示一次，说明已按单屏横屏运行
+        TryStep("DualScreenNotice", () =>
+        {
+            if (Services.AppFlags.DualScreenEnabled) return;
+            if (!Platforms.Android.DualDisplayProbe.HasSecondaryDisplay()) return;
+            Dispatcher.Dispatch(async () =>
+            {
+                await Task.Delay(500);
+                ShowTip(Services.UiText.DualUnsupported, 3500);
+            });
+        });
+#endif
 
         // 先把上次扫描结果从磁盘缓存读出来：「重进软件」不再面对空白等好几分钟
         bool usedCache = false;
@@ -271,6 +285,11 @@ public partial class MainPage : ContentPage
 
     private bool _refreshRunning;
     private bool _homeBootstrapped;
+
+    // 转屏重绑保护（见 ScheduleSaveListRebind）
+    private bool _saveListRebindPending;
+    private bool? _lastLandscape;
+    private bool? _lastDual;
 
     /// <summary>
     /// 冷启动的省时路径：先用缓存卡片上屏，立刻做一次「只查变过的文件」的校验，
@@ -362,6 +381,8 @@ public partial class MainPage : ContentPage
 
         MarkRefreshing(true);
         var added = 0;
+        var duplicates = 0;
+        var scanned = 0;
         foreach (var (uri, isFile) in pending)
         {
             try
@@ -369,7 +390,14 @@ public partial class MainPage : ContentPage
                 var found = await _dirService.ScanSingleAsync(uri, isFile);
                 foreach (var e in found)
                 {
-                    if (_session.LoadedSaves.Any(s => s.FileUri == e.FileUri)) continue;
+                    scanned++;
+                    if (_session.LoadedSaves.Any(s => s.FileUri == e.FileUri))
+                    {
+                        // 同一路径重复添加：功能本身没问题（写授权在选择文件时已持久化），
+                        // 旧代码把它当成"没识别出存档"报错，才有了问题 2 的假警报。
+                        duplicates++;
+                        continue;
+                    }
                     _session.LoadedSaves.Add(e);
                     added++;
                 }
@@ -386,11 +414,21 @@ public partial class MainPage : ContentPage
             ApplySaveEntries(_session.LoadedSaves);
             SaveIndexCache.Save(_session.LoadedSaves);
         }
-        else if (pending.Count > 0)
+        else if (duplicates > 0)
+        {
+            await DisplayAlertAsync(
+                "这张存档已经在列表里了",
+                "同一张存档不用重复添加。\n若存入/取出写不进文件，请改用首页「文件夹管理 → 添加文件夹」把存档所在目录加进来，"
+                + "目录授权默认带写权限。",
+                "好");
+        }
+        else if (scanned == 0)
+        {
             await DisplayAlertAsync(
                 "没读到存档",
                 "新增的路径里没有识别出存档。点击首页「N 个存档」小字双击可以打开扫描诊断，看具体原因。",
                 "好");
+        }
     }
 
     /// <summary>显示崩溃摘要。title/message 非空时表示本次刚发生错误。</summary>
@@ -420,22 +458,21 @@ public partial class MainPage : ContentPage
         }
     }
 
-    // 底部提示徽章 → 真按键（导航 / 选择 / 返回 / 搜索）
+    // 底部提示徽章 → 真按键（选择 / 返回 / 设置）
     private void BindHomeHintTaps()
     {
         if (HomeHintBar is null) return;
-        if (HomeHintBar.Children.Count < 4) return;
         var actions = new Action[]
         {
-            () => MoveDown(),                       // ↕ 导航
-            () => _ = OnAPressed(),                 // A 选择
+            () => _ = OnAPressed(),                 // A 选中
             GoBackOrQuit,                           // B 返回
-            () => _ = RefreshSavesAsync(),          // X 搜索
+            () => _ = NavigateTo(nameof(SettingsPage)), // Select 设置
         };
-        for (int i = 0; i < 4; i++)
+        int count = Math.Min(actions.Length, HomeHintBar.Children.Count);
+        for (int i = 0; i < count; i++)
         {
             if (HomeHintBar.Children[i] is not View v) continue;
-            if (v.GestureRecognizers.Count > 0) continue;
+            if (HasTapGesture(v)) continue; // 子树里已绑（Select 设置片在 XAML 里绑了），别再叠加一次
             int idx = i;
             v.GestureRecognizers.Add(new TapGestureRecognizer
             {
@@ -444,7 +481,20 @@ public partial class MainPage : ContentPage
         }
     }
 
+    /// <summary>递归判断某个视图（含其子树）是否已经有 Tap 手势，避免重复绑定导致一次点击触发两次跳转。</summary>
+    private static bool HasTapGesture(View view)
+    {
+        if (view.GestureRecognizers.Count > 0) return true;
+        if (view is Layout layout)
+        {
+            foreach (var child in layout.Children)
+                if (child is View cv && HasTapGesture(cv)) return true;
+        }
+        return false;
+    }
+
     private DateTime _quitPressAt = DateTime.MinValue;
+    private int _tipToken;
 
     internal void GoBackOrQuit()
     {
@@ -457,16 +507,7 @@ public partial class MainPage : ContentPage
         }
 
         _quitPressAt = now;
-        QuitToast.IsVisible = true;
-        QuitToast.Opacity = 1;
-        _ = HideQuitToastAsync();
-    }
-
-    private async Task HideQuitToastAsync()
-    {
-        await Task.Delay(2500);
-        if ((DateTime.Now - _quitPressAt).TotalMilliseconds > 2500)
-            QuitToast.IsVisible = false;
+        ShowTip(UiText.QuitConfirm, 2500);
     }
 
     protected override void OnDisappearing()
@@ -483,8 +524,87 @@ public partial class MainPage : ContentPage
     {
         base.OnSizeAllocated(width, height);
         if (width <= 0 || height <= 0) return;
-        bool dual = _secondary.IsAvailable;
-        if (!dual) ApplyMainPageLayout(dual, width > height);
+
+        bool dual      = _secondary.IsAvailable;
+        bool landscape = width > height;
+
+        // 只有在「方向真的翻转」或「双屏状态变化」时才重绑列表：
+        // 每次 OnSizeAllocated 都重绑会让列表反复重建、闪烁并丢滚动位置。
+        bool flipped     = _lastLandscape is not null && _lastLandscape.Value != landscape;
+        bool dualChanged = _lastDual is not null && _lastDual.Value != dual;
+        _lastLandscape = landscape;
+        _lastDual      = dual;
+
+        if (!dual) ApplyMainPageLayout(dual, landscape);
+        if (flipped || dualChanged) ScheduleSaveListRebind();
+    }
+
+    /// <summary>
+    /// 转屏后 CollectionView（Android RecyclerView）会沿用旧的测量结果：
+    /// 首项被压成窄条（横→竖）或干脆不绘制（竖→横，0 高度窗口期测过一次）。
+    /// 统一做法是把 ItemsSource 重挂一遍强制重新测量，再延迟一拍回填框选与选中态。
+    /// </summary>
+    private void ScheduleSaveListRebind()
+    {
+        if (_saveListRebindPending) return;
+        _saveListRebindPending = true;
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(90), () =>
+        {
+            _saveListRebindPending = false;
+            RebindSaveList();
+        });
+    }
+
+    private void RebindSaveList(int attempt = 0)
+    {
+        try
+        {
+            if (_saveCards.Count == 0) return;
+
+            // 容器还没量出宽度时重绑没有意义（会再次按 0 宽测量），最多补试 3 次。
+            if (SaveCardsList.Width <= 0)
+            {
+                if (attempt >= 3) return;
+                _saveListRebindPending = true;
+                Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(90), () =>
+                {
+                    _saveListRebindPending = false;
+                    RebindSaveList(attempt + 1);
+                });
+                return;
+            }
+
+            int idx   = Math.Clamp(_cardCursor < 0 ? 0 : _cardCursor, 0, _saveCards.Count - 1);
+            var keep  = SaveCardsList.SelectedItem as SaveCardViewModel;
+
+            SaveCardsList.ItemsSource = null;
+            SaveCardsList.ItemsSource = _saveCards;
+
+            // 回填框选（只改 IsCursor，不触发加载）
+            _cardCursor = -1;
+            SetCardCursor(idx);
+
+            // 回填选中态：按存档 URI 找回同一条，_gpNavigating 确保不触发自动载入
+            if (keep is not null)
+            {
+                var match = _saveCards.FirstOrDefault(c => c.Entry.FileUri == keep.Entry.FileUri);
+                if (match is not null)
+                {
+                    _gpNavigating = true;
+                    SaveCardsList.SelectedItem = match;
+                    _gpNavigating = false;
+                }
+            }
+
+            if (idx < _saveCards.Count)
+                SaveCardsList.ScrollTo(idx, position: ScrollToPosition.MakeVisible, animate: false);
+
+            DiagLog.Add($"[ORIENT] save list rebound (idx={idx}, n={_saveCards.Count}, land={_lastLandscape})");
+        }
+        catch (Exception ex)
+        {
+            DiagLog.Add("[ORIENT] rebound failed: " + ex.Message);
+        }
     }
 
     /// <summary>
@@ -627,6 +747,10 @@ public partial class MainPage : ContentPage
         UpdateHeroPreview();
         UpdateActionHighlight();
         _secondary.ShowMainMenu(_saveCards.Cast<object>().ToList(), _cardCursor);
+
+        // 冷启动「先竖屏后横屏」时，铺数据发生在转屏之后：此时首项可能已被按 0 高度测过一次。
+        // 统一在绑定后延迟一拍重绑，强制重新测量（见 ScheduleSaveListRebind）。
+        ScheduleSaveListRebind();
         DiagLog.Add($"[HOME] apply done {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0}ms");
     }
 
@@ -1013,9 +1137,26 @@ public partial class MainPage : ContentPage
     {
         try
         {
+            // test11 问题7 P1：载入时优先读磁盘真实内容，读不到才回落到卡片缓存字节。
+            // 只换基线不换内存会更危险（会拿旧数据覆盖游戏新进度），所以这里连解析用的
+            // 字节一起换掉——内存 sav、写回基线、磁盘三者天然一致。
+            byte[] bytes = entry.RawData.ToArray();
+            try
+            {
+                var disk = await new FileService().ReadBackAsync(entry.FileUri);
+                if (disk is { Length: > 0 })
+                    bytes = disk;
+                else
+                    Services.DiagLog.Add($"load-save fallback-to-cache uri={entry.FileName} (disk unreadable)");
+            }
+            catch (Exception ex)
+            {
+                Services.DiagLog.Add($"load-save read-disk-failed uri={entry.FileName}: {ex.GetType().Name}");
+            }
+
             var sav = await Task.Run(() =>
             {
-                var data = entry.RawData.ToArray(); // copy — SwishCrypto decrypts in-place
+                var data = bytes.ToArray(); // copy — SwishCrypto decrypts in-place
                 SaveUtil.TryGetSaveFile(data, out var s);
                 return s;
             });
@@ -1023,7 +1164,7 @@ public partial class MainPage : ContentPage
             if (sav is null)
             {
                 await DisplayAlertAsync("加载失败",
-                    $"Could not parse \"{entry.FileName}\" ({entry.RawData.Length:N0} bytes). Unsupported format.",
+                    $"Could not parse \"{entry.FileName}\" ({bytes.Length:N0} bytes). Unsupported format.",
                     "OK");
                 return;
             }
@@ -1034,7 +1175,7 @@ public partial class MainPage : ContentPage
             _session.ActiveSave = sav;
             _session.ActiveSaveFileName = entry.FileName;
             _session.ActiveSaveFileUri = entry.FileUri;
-            SaveSyncService.CaptureBaseline(_session, entry.RawData.ToArray());
+            SaveSyncService.CaptureBaseline(_session, sav);
             _selectedSave = entry;
 
             var active = _saveCards.FirstOrDefault(c => c.Entry == entry);
@@ -1057,7 +1198,29 @@ public partial class MainPage : ContentPage
     private void ActivatePrimaryButton()
     {
         if (_selectedSave is not null)
+        {
             _ = NavigateTo(nameof(GamePage));
+            return;
+        }
+        ShowTip(UiText.PickSave);
+    }
+
+    /// <summary>底部短提示：复用一个浮层，2 秒后自动收起。</summary>
+    private void ShowTip(string text, int ms = 2000)
+    {
+        TipLabel.Text = text;
+        QuitToast.IsVisible = true;
+        QuitToast.Opacity = 1;
+        var token = ++_tipToken;
+        _ = HideTipAsync(token, ms);
+    }
+
+    private async Task HideTipAsync(int token, int ms)
+    {
+        await Task.Delay(ms);
+        if (token != _tipToken) return; // 已被后续提示覆盖
+        QuitToast.IsVisible = false;
+        TipLabel.Text = UiText.QuitConfirm;
     }
 
     /// <summary>
@@ -1105,16 +1268,16 @@ public partial class MainPage : ContentPage
                 if (_selectedSave is not null)
                     _ = ExportSaveAsync();
                 break;
-            case 2: // Bank
+            case 2: // Boxes（原主按钮「打开箱子」）
+                ActivatePrimaryButton();
+                break;
+            case 3: // Bank
                 // On Thor (dual screen): BankViewPage shows detail on top screen, grid on second screen.
                 // On phone: BankPage shows the full grid on the primary screen (BankViewPage has no grid there).
                 _ = NavigateTo(_secondary.IsAvailable ? nameof(BankViewPage) : nameof(BankPage));
                 break;
-            case 3: // Dex
+            case 4: // Dex
                 _ = NavigateTo(nameof(DexPage));
-                break;
-            case 4: // Settings
-                _ = NavigateTo(nameof(SettingsPage));
                 break;
         }
     }
@@ -1147,15 +1310,18 @@ public partial class MainPage : ContentPage
     }
 
     private void OnHeroCardTapped(object? sender, TappedEventArgs e) => ActivatePrimaryButton();
-    private void OnOpenBoxesTapped(object? sender, EventArgs e) => ActivatePrimaryButton();
-    private void OnSettingsTapped(object? sender, EventArgs e) => ActivateTile(4);
+    private void OnBoxesTapped(object? sender, EventArgs e) => ActivateTile(2);
+    private void OnSettingsTapped(object? sender, EventArgs e) => _ = NavigateTo(nameof(SettingsPage));
+    // 首页 A / B 两片徽章也可点：与手柄同款动作（B = 第一次提示、再点一次退出）
+    private void OnHintATapped(object? sender, EventArgs e) => _ = OnAPressed();
+    private void OnHintBTapped(object? sender, EventArgs e) => GoBackOrQuit();
     private void OnGiftsTapped(object? sender, EventArgs e) => ActivateTile(0);
     private void OnExportTapped(object? sender, EventArgs e) => ActivateTile(1);
-    private void OnBankTapped(object? sender, EventArgs e) => ActivateTile(2);
+    private void OnBankTapped(object? sender, EventArgs e) => ActivateTile(3);
     private void OnDexTapped(object? sender, EventArgs e)
     {
         DiagLog.Add($"[HOME] dex tap {HomeMs():F0}ms");
-        ActivateTile(3);
+        ActivateTile(4);
     }
 
     // ── Action bar highlight ─────────────────────────────────────────────────
@@ -1177,23 +1343,10 @@ public partial class MainPage : ContentPage
         var normalBg     = Color.FromArgb(light ? "#FFFFFF" : "#131B35");
         var normalStroke = Color.FromArgb(light ? "#E0E4EC" : "#0DFFFFFF");
 
-        // Primary button — enforce pastel blue background (overrides any theme reset)
-        Btn_OpenBoxes.Background = new LinearGradientBrush
-        {
-            StartPoint = new Point(0, 0), EndPoint = new Point(1, 1),
-            GradientStops = [
-                new GradientStop(Color.FromArgb("#EAF5FF"), 0f),
-                new GradientStop(Color.FromArgb("#CCE8FF"), 1f),
-            ],
-        };
-        bool primaryFocused = _focusSection == 1 && _actionCursor == 0;
-        Btn_OpenBoxes.Stroke          = primaryFocused ? Color.FromArgb("#5AAAD0") : Colors.Transparent;
-        Btn_OpenBoxes.StrokeThickness = primaryFocused ? 2.5 : 1.5;
-
         // Tiles
         for (int i = 0; i < _actionTiles.Length; i++)
         {
-            bool focused = _focusSection == 1 && _actionCursor == i + 1;
+            bool focused = _focusSection == 1 && _actionCursor == i;
             _actionTiles[i].BackgroundColor = focused ? focusBg : normalBg;
             _actionTiles[i].Stroke          = focused ? focusStroke : normalStroke;
         }
@@ -1226,8 +1379,7 @@ public partial class MainPage : ContentPage
                 _ = OnAPressed(); break;
             case Android.Views.Keycode.ButtonB:
                 GoBackOrQuit(); break;
-            case Android.Views.Keycode.ButtonX:
-                ActivateTile(4); break; // Quick jump to Settings
+            // 首页不再绑定 X（搜索入口只在箱子页）
             case Android.Views.Keycode.ButtonL1:
                 CycleZone(-1); break;
             case Android.Views.Keycode.ButtonR1:
@@ -1274,26 +1426,18 @@ public partial class MainPage : ContentPage
         Haptic();
         if (_focusSection == 1)
         {
-            if (_actionCursor > 0)
-            {
-                _actionCursor = 0;
-            }
-            else
-            {
-                CycleZone(-1);
-                return;
-            }
+            // 格子区只有一行：上 = 回到存档卡片区
+            CycleZone(-1);
+            return;
         }
-        else
-        {
-            if (_saveCards.Count == 0) return;
-            SetCardCursor(Math.Max(0, (_cardCursor < 0 ? 0 : _cardCursor) - 1));
-            _gpNavigating = true;
-            SaveCardsList.SelectedItem = _saveCards[_cardCursor];
-            _gpNavigating = false;
-            SaveCardsList.ScrollTo(_cardCursor, -1, ScrollToPosition.MakeVisible, false);
-            UpdateHeroPreview();
-        }
+
+        if (_saveCards.Count == 0) return;
+        SetCardCursor(Math.Max(0, (_cardCursor < 0 ? 0 : _cardCursor) - 1));
+        _gpNavigating = true;
+        SaveCardsList.SelectedItem = _saveCards[_cardCursor];
+        _gpNavigating = false;
+        SaveCardsList.ScrollTo(_cardCursor, -1, ScrollToPosition.MakeVisible, false);
+        UpdateHeroPreview();
         UpdateActionHighlight();
     }
 
@@ -1317,32 +1461,24 @@ public partial class MainPage : ContentPage
                 return;
             }
         }
-        else
-        {
-            if (_actionCursor == 0)
-                _actionCursor = 1;
-        }
+        // 格子区只有一行，向下不再移动
         UpdateActionHighlight();
     }
 
     private void MoveLeft()
     {
         Haptic();
-        if (_focusSection == 1 && _actionCursor > 1)
-        {
-            _actionCursor--;
-            UpdateActionHighlight();
-        }
+        if (_focusSection != 1) return;
+        _actionCursor = (_actionCursor - 1 + _actionTiles.Length) % _actionTiles.Length;
+        UpdateActionHighlight();
     }
 
     private void MoveRight()
     {
         Haptic();
-        if (_focusSection == 1 && _actionCursor >= 1 && _actionCursor < 5)
-        {
-            _actionCursor++;
-            UpdateActionHighlight();
-        }
+        if (_focusSection != 1) return;
+        _actionCursor = (_actionCursor + 1) % _actionTiles.Length;
+        UpdateActionHighlight();
     }
 
     private async Task OnAPressed()
@@ -1361,10 +1497,7 @@ public partial class MainPage : ContentPage
         }
         else
         {
-            if (_actionCursor == 0)
-                ActivatePrimaryButton();
-            else
-                ActivateTile(_actionCursor - 1);
+            ActivateTile(_actionCursor);
         }
     }
 

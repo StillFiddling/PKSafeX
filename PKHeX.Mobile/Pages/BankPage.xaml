@@ -143,7 +143,7 @@
                 </ScrollView>
             </Grid>
 
-            <!-- 横屏单栏底栏：左下当前存档（可点切换）、右下功能按键徽章 -->
+            <!-- 横屏单栏底栏：左存档/训练家（可点切换）、中间功能徽章、右侧「箱子 ▸」导航 -->
             <Grid x:Name="LsBottomBar" Grid.Row="5" IsVisible="False"
                   ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10"
                   Padding="12,4,12,8"
@@ -165,8 +165,26 @@
                            VerticalOptions="Center" />
                 </HorizontalStackLayout>
 
-                <HorizontalStackLayout x:Name="LsHints" Grid.Column="2" Spacing="6"
-                                       HorizontalOptions="End" VerticalOptions="Center" />
+                <!-- 徽章居中：窄屏放不下时横向滚动，不挤掉左右两端 -->
+                <ScrollView Grid.Column="1" Orientation="Horizontal"
+                            HorizontalScrollBarVisibility="Never"
+                            VerticalOptions="Center">
+                    <HorizontalStackLayout x:Name="LsHints" Spacing="6"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </ScrollView>
+
+                <!-- 横屏银行页去掉了顶部「箱子 ▸」入口，统一在底栏右侧给 -->
+                <Border x:Name="LsToBoxBtn" Grid.Column="2"
+                        StrokeShape="RoundRectangle 8"
+                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        Padding="12,8" VerticalOptions="Center">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnToBoxTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static svc:UiText.BoxArrow}" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
             </Grid>
         </Grid>
 
@@ -183,17 +201,18 @@
             </BoxView>
 
             <Border x:Name="DetailPanel"
-                    VerticalOptions="End"
-                    TranslationY="600"
-                    StrokeShape="RoundRectangle 20,20,0,0"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Opacity="0"
+                    StrokeShape="RoundRectangle 20"
                     BackgroundColor="{DynamicResource ThActionMenuPanel}"
                     Stroke="{DynamicResource ThActionMenuStroke}"
                     StrokeThickness="1"
-                    Padding="16,14,16,24">
-                <Grid RowDefinitions="Auto,Auto" RowSpacing="14">
+                    Padding="16,14,16,14">
+                <Grid RowDefinitions="Auto,*" RowSpacing="10">
 
-                    <!-- Header: sprite + badges/name/level + 右侧竖排三键 -->
-                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <!-- Header: sprite + badges/name/level + 右侧竖排三键（与银行页现状一致，无放生） -->
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                         <skia:SKCanvasView x:Name="DetailSpriteCanvas"
                                            WidthRequest="90" HeightRequest="90"
                                            PaintSurface="OnDetailSpritePaint"/>
@@ -209,7 +228,6 @@
                                    MaxLines="1" LineBreakMode="TailTruncation"/>
                         </VerticalStackLayout>
 
-                        <!-- 右上角竖排小按钮：R3 叫声 / 关闭 / 取出银行 -->
                         <VerticalStackLayout Grid.Column="2" Spacing="4"
                                              VerticalOptions="Start" HorizontalOptions="End">
                             <Border x:Name="DetailCryBtn" StrokeShape="RoundRectangle 6"
@@ -245,65 +263,237 @@
                         </VerticalStackLayout>
                     </Grid>
 
-                    <!-- Moves -->
-                    <VerticalStackLayout Grid.Row="1" Spacing="6">
-                        <Label Text="招式" FontFamily="NunitoBold" FontSize="9"
-                               TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"
-                               Margin="0,0,0,2"/>
-                        <Border x:Name="DetailMoveRow0" StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThMoveRowBg}" Padding="10,7">
-                            <Grid ColumnDefinitions="12,*,Auto">
-                                <Ellipse x:Name="DetailMoveDot0" Grid.Column="0" Fill="#A8A878"
-                                         WidthRequest="9" HeightRequest="9" VerticalOptions="Center"/>
-                                <Label x:Name="DetailMoveName0" Grid.Column="1" Margin="8,0,0,0"
-                                       FontFamily="NunitoBold" FontSize="12"
-                                       TextColor="{DynamicResource ThTextPrimary}"
-                                       MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center"/>
-                                <Label x:Name="DetailMovePP0" Grid.Column="2" FontFamily="Nunito" FontSize="10"
-                                       TextColor="{DynamicResource ThTextHint}" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-                        <Border x:Name="DetailMoveRow1" StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThMoveRowBg}" Padding="10,7">
-                            <Grid ColumnDefinitions="12,*,Auto">
-                                <Ellipse x:Name="DetailMoveDot1" Grid.Column="0" Fill="#A8A878"
-                                         WidthRequest="9" HeightRequest="9" VerticalOptions="Center"/>
-                                <Label x:Name="DetailMoveName1" Grid.Column="1" Margin="8,0,0,0"
-                                       FontFamily="NunitoBold" FontSize="12"
-                                       TextColor="{DynamicResource ThTextPrimary}"
-                                       MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center"/>
-                                <Label x:Name="DetailMovePP1" Grid.Column="2" FontFamily="Nunito" FontSize="10"
-                                       TextColor="{DynamicResource ThTextHint}" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-                        <Border x:Name="DetailMoveRow2" StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThMoveRowBg}" Padding="10,7">
-                            <Grid ColumnDefinitions="12,*,Auto">
-                                <Ellipse x:Name="DetailMoveDot2" Grid.Column="0" Fill="#A8A878"
-                                         WidthRequest="9" HeightRequest="9" VerticalOptions="Center"/>
-                                <Label x:Name="DetailMoveName2" Grid.Column="1" Margin="8,0,0,0"
-                                       FontFamily="NunitoBold" FontSize="12"
-                                       TextColor="{DynamicResource ThTextPrimary}"
-                                       MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center"/>
-                                <Label x:Name="DetailMovePP2" Grid.Column="2" FontFamily="Nunito" FontSize="10"
-                                       TextColor="{DynamicResource ThTextHint}" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-                        <Border x:Name="DetailMoveRow3" StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThMoveRowBg}" Padding="10,7">
-                            <Grid ColumnDefinitions="12,*,Auto">
-                                <Ellipse x:Name="DetailMoveDot3" Grid.Column="0" Fill="#A8A878"
-                                         WidthRequest="9" HeightRequest="9" VerticalOptions="Center"/>
-                                <Label x:Name="DetailMoveName3" Grid.Column="1" Margin="8,0,0,0"
-                                       FontFamily="NunitoBold" FontSize="12"
-                                       TextColor="{DynamicResource ThTextPrimary}"
-                                       MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center"/>
-                                <Label x:Name="DetailMovePP3" Grid.Column="2" FontFamily="Nunito" FontSize="10"
-                                       TextColor="{DynamicResource ThTextHint}" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-                    </VerticalStackLayout>
+                    <!-- 内容区：与箱子页同款三块（招式 / 能力 / 详情），单列串联可滚动；无底部通栏 -->
+                    <ScrollView x:Name="DetailSheetScroll" Grid.Row="1"
+                                VerticalScrollBarVisibility="Never">
+                        <Grid x:Name="DetailSheetContent" RowSpacing="10" Padding="0,2,0,2"
+                              RowDefinitions="Auto,Auto,Auto">
 
+                            <!-- 区块 1：招式（2×2） -->
+                            <VerticalStackLayout x:Name="DetailSheetMovesView" Grid.Row="0" Spacing="6">
+                                <Label Text="招式" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"/>
+                                <Grid x:Name="DetailSheetMovesGrid"
+                                      ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                                      ColumnSpacing="8" RowSpacing="6">
+                                    <Border x:Name="DetailMoveRow0" Grid.Row="0" Grid.Column="0"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="10,*,Auto">
+                                            <Ellipse x:Name="DetailMoveDot0" Grid.Column="0" Fill="#A8A878"
+                                                     WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailMoveName0" Grid.Column="1" Margin="6,0,0,0"
+                                                   FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                            <Label x:Name="DetailMovePP0" Grid.Column="2"
+                                                   FontFamily="Nunito" FontSize="10"
+                                                   TextColor="{DynamicResource ThTextSecondary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="DetailMoveRow1" Grid.Row="0" Grid.Column="1"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="10,*,Auto">
+                                            <Ellipse x:Name="DetailMoveDot1" Grid.Column="0" Fill="#A8A878"
+                                                     WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailMoveName1" Grid.Column="1" Margin="6,0,0,0"
+                                                   FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                            <Label x:Name="DetailMovePP1" Grid.Column="2"
+                                                   FontFamily="Nunito" FontSize="10"
+                                                   TextColor="{DynamicResource ThTextSecondary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="DetailMoveRow2" Grid.Row="1" Grid.Column="0"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="10,*,Auto">
+                                            <Ellipse x:Name="DetailMoveDot2" Grid.Column="0" Fill="#A8A878"
+                                                     WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailMoveName2" Grid.Column="1" Margin="6,0,0,0"
+                                                   FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                            <Label x:Name="DetailMovePP2" Grid.Column="2"
+                                                   FontFamily="Nunito" FontSize="10"
+                                                   TextColor="{DynamicResource ThTextSecondary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="DetailMoveRow3" Grid.Row="1" Grid.Column="1"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="10,*,Auto">
+                                            <Ellipse x:Name="DetailMoveDot3" Grid.Column="0" Fill="#A8A878"
+                                                     WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailMoveName3" Grid.Column="1" Margin="6,0,0,0"
+                                                   FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                            <Label x:Name="DetailMovePP3" Grid.Column="2"
+                                                   FontFamily="Nunito" FontSize="10"
+                                                   TextColor="{DynamicResource ThTextSecondary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <!-- 区块 2：能力（2×3，与箱子页同口径） -->
+                            <VerticalStackLayout x:Name="DetailSheetStatsView" Grid.Row="1" Spacing="6">
+                                <Label Text="能力" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"/>
+                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto"
+                                      ColumnSpacing="8" RowSpacing="6">
+                                    <Border Grid.Row="0" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="HP" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailStatHP" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="0" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="攻击" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailStatATK" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="防御" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailStatDEF" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="特攻" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailStatSPA" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="2" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="特防" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailStatSPD" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="2" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="速度" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="DetailStatSPE" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <!-- 区块 3：详情（特性 / 道具 / 性别 / 球种） -->
+                            <VerticalStackLayout x:Name="DetailSheetInfoView" Grid.Row="2" Spacing="6">
+                                <Label Text="详情" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"/>
+                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                                      RowSpacing="6" ColumnSpacing="8">
+                                    <Border Grid.Row="0" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="特性" FontFamily="NunitoBold" FontSize="9"
+                                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                            <Label x:Name="DetailInfoAbility" FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border Grid.Row="0" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="道具" FontFamily="NunitoBold" FontSize="9"
+                                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                            <Label x:Name="DetailInfoItem" FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="性别" FontFamily="NunitoBold" FontSize="9"
+                                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                            <Label x:Name="DetailInfoGender" FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="球种" FontFamily="NunitoBold" FontSize="9"
+                                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                            <Label x:Name="DetailInfoBall" FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </Grid>
+                            </VerticalStackLayout>
+
+                        </Grid>
+                    </ScrollView>
                 </Grid>
             </Border>
         </Grid>

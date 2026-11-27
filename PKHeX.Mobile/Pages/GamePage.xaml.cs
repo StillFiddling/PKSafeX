@@ -60,8 +60,7 @@ public partial class GamePage : ContentPage
     private int _boxSlideDir;
 
 #if ANDROID
-    // Pokémon cry playback
-    private Android.Media.MediaPlayer? _cryPlayer;
+    // Pokémon cry playback（播放器与下载统一交给 CryService，这里只保留防抖）
     private string _lastCrySlug = "";
 #endif
 
@@ -108,6 +107,12 @@ public partial class GamePage : ContentPage
     private bool _isLandscapePhone;
     private PKM? _phoneSheetPk;
     private bool _phoneSheetVisible;
+    /// <summary>详情浮层显隐序号：每次 Show/Hide 自增，收尾动画校验序号避免清掉新卡片。</summary>
+    private int PhoneSheetSeq;
+    /// <summary>竖屏卡片高度上限（min(0.94 屏, 760)），由 ApplySheetSize 计算。</summary>
+    private double _sheetMaxH;
+    /// <summary>当前卡片实际高度（横屏固定值，竖屏为实测后 clamp 的结果）。</summary>
+    private double _sheetCardH;
 
     public GamePage(ISecondaryDisplay secondary, SessionState session)
     {
@@ -202,6 +207,7 @@ public partial class GamePage : ContentPage
         ItemRow.Changed -= OnItemChanged;
         ItemRow.Changed += OnItemChanged;
         BackCoordinator.Bind(HandleBackAction);
+        BindPortraitHintTaps();
         var sav = _session.ActiveSave;
         if (sav is null) return;
 
@@ -213,6 +219,11 @@ public partial class GamePage : ContentPage
             _ = CheckStaleOnEnterAsync();
 
         _isPhone = !_secondary.IsAvailable;
+
+        // 从编辑器/银行返回：清掉残留选中态与浮层位移，避免"再点同格直跳编辑器"和卡片贴底
+        DeselectSlot();
+        PhoneSheetPanel.TranslationY = 0;
+        PhoneSheetPanel.Scale        = 1;
 
         // Always reset so WebView reloads cleanly after any navigation away.
         // Also reset _previewSpecies so the scale/toggle changes from Settings
@@ -329,7 +340,7 @@ public partial class GamePage : ContentPage
 
         if (_isPhone && _phoneSheetVisible)
         {
-            _ = HidePhoneDetailSheetAsync();
+            DeselectSlot();     // 收起浮层并清掉选中态，避免下次点同格直跳编辑器
             return true;
         }
 
@@ -354,11 +365,14 @@ public partial class GamePage : ContentPage
         CommitItems();
         ItemRow.Changed -= OnItemChanged;
         BackCoordinator.Unbind(HandleBackAction);
-        // Instantly reset sheet so it's off-screen when returning
+        // 隐藏浮层：只归零位移 + 透明，不再靠 TranslationY 挪出屏幕
         if (_isPhone)
         {
-            PhoneSheetPanel.TranslationY = 600;
-            PhoneSheetScrim.Opacity = 0;
+            PhoneSheetSeq++;            // 使任何在途的显隐动画收尾失效
+            PhoneSheetPanel.TranslationY = 0;
+            PhoneSheetPanel.Scale        = 1;
+            PhoneSheetPanel.Opacity      = 0;
+            PhoneSheetScrim.Opacity      = 0;
             PhoneDetailSheet.InputTransparent = true;
             _phoneSheetVisible = false;
             _phoneSheetPk = null;
@@ -366,9 +380,7 @@ public partial class GamePage : ContentPage
 #if ANDROID
         GamepadRouter.KeyReceived        -= OnGamepadKey;
         GamepadRouter.BoxScrollRequested -= OnBoxScroll;
-        _cryPlayer?.Stop();
-        _cryPlayer?.Release();
-        _cryPlayer = null;
+        CryService.Stop();   // 页面退出停声，避免切页后还在响 / 叠音
 #endif
         ThemeService.ThemeChanged -= OnThemeChanged;
         _pulseTimer?.Stop();
@@ -416,10 +428,26 @@ public partial class GamePage : ContentPage
             InfoBarGrid.IsVisible       = false;
             LsBottomBar.IsVisible       = true;
 
-            // 竖向空间优先给格子：导航行与搜索行压紧
+            // 竖向空间优先给格子：导航行压紧，搜索改作画布左上角的固定宽浮层
             BoxNavRow.Padding    = new Thickness(12, 2, 12, 2);
-            BoxSearchRow.HeightRequest = 34;
-            BoxSearchRow.Margin = new Thickness(12, 0, 12, 4);
+
+            // 搜索栏改作 overlay：挂在画布同一格（Row4）左上角，固定 200dp、不参与行测量。
+            // Row3 空出来后画布自动变高，RecalcGridLayout 会按新尺寸重算并重新居中。
+            Grid.SetRow(BoxSearchRow, 4);
+            BoxSearchRow.HorizontalOptions = LayoutOptions.Start;
+            BoxSearchRow.VerticalOptions   = LayoutOptions.Start;
+            BoxSearchRow.WidthRequest      = 200;
+            BoxSearchRow.Margin            = new Thickness(12, 2, 0, 0);
+            BoxSearchRow.ZIndex            = 12;
+            BoxSearchRow.HeightRequest     = 40;
+            BoxSearchRow.IsVisible         = _landscapeSearchOpen;
+
+            // ✕ 回到行内（框右侧），与竖屏一致；不再做框外独立圆钮
+            SearchClearBtn.IsVisible    = true;
+
+            // 放大镜：浮在 ◀▶ 行正下方（overlay，不占高度）；搜索打开时让位
+            BoxSearchBtn.IsVisible   = !_landscapeSearchOpen;
+            LsSearchDismiss.IsVisible = _landscapeSearchOpen;
 
             SyncLandscapeBottomBar();
             BuildLandscapeHints();
@@ -438,6 +466,18 @@ public partial class GamePage : ContentPage
             InfoBarGrid.IsVisible       = true;
             LsBottomBar.IsVisible       = false;
 
+            // 搜索栏回到 Row3 整行（竖屏完全沿用原样）
+            _landscapeSearchOpen           = false;
+            Grid.SetRow(BoxSearchRow, 3);
+            BoxSearchRow.HorizontalOptions = LayoutOptions.Fill;
+            BoxSearchRow.VerticalOptions   = LayoutOptions.Fill;
+            BoxSearchRow.WidthRequest      = -1;
+            BoxSearchRow.ZIndex            = 0;
+            BoxSearchRow.IsVisible         = true;
+            SearchClearBtn.IsVisible       = true;   // 竖屏保留行内 ✕
+            BoxSearchBtn.IsVisible         = false;
+            LsSearchDismiss.IsVisible      = false;
+
             BoxNavRow.Padding          = new Thickness(16, 12, 16, 8);
             BoxSearchRow.HeightRequest = 44;
             BoxSearchRow.Margin        = new Thickness(12, 0, 12, 6);
@@ -446,6 +486,43 @@ public partial class GamePage : ContentPage
             RestoreLandscapeColumns();
             _landscapeDetailView = 0;
         }
+
+        // 详情卡片开着时转屏：内容 → 列排布 → 尺寸（先填内容再量高，否则量到旧内容）
+        if (_phoneSheetVisible)
+        {
+            ApplySheetSize();
+            if (_phoneSheetPk is { } rotPk) UpdatePhoneSheetContent(rotPk);
+            ApplySheetContentLayout();
+            ApplySheetHeight();
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    //  横屏搜索浮层（固定 230dp，落在画布左侧留白条内）
+    // ──────────────────────────────────────────────
+
+    private bool _landscapeSearchOpen;
+
+    private void OnSearchBoxTapped(object sender, TappedEventArgs e) => SetLandscapeSearch(true);
+
+    private void OnSearchOverlayDismissTapped(object sender, TappedEventArgs e) => SetLandscapeSearch(false);
+
+    private void OnClearSearchTapped(object sender, TappedEventArgs e)
+    {
+        // 清空才退出过滤；单纯收起浮层是保留过滤结果的
+        SearchEntry.Text = string.Empty;
+        if (_isLandscapePhone) SetLandscapeSearch(false);
+    }
+
+    private void SetLandscapeSearch(bool open)
+    {
+        if (!_isLandscapePhone) return;
+        _landscapeSearchOpen = open;
+        BoxSearchRow.IsVisible      = open;
+        BoxSearchBtn.IsVisible      = !open;   // 浮层打开时让位，避免两个控件叠在左上角
+        LsSearchDismiss.IsVisible   = open;
+        if (open) Dispatcher.Dispatch(() => SearchEntry.Focus());
+        else      SearchEntry.Unfocus();
     }
 
     private void OnThemeChanged()
@@ -494,22 +571,51 @@ public partial class GamePage : ContentPage
         LsGameIcon.Source  = PhoneGameIcon.Source;
     }
 
-    /// <summary>横屏单栏右下角的 5 枚按键徽章（与竖屏提示条同一套样式）。</summary>
+    /// <summary>横屏单栏中间的按键徽章（与竖屏提示条同一套样式）。每一枚都可点。</summary>
     private void BuildLandscapeHints()
     {
         if (LsHints.Count > 0) return;
 
-        LsHints.Add(HintChips.Create("A", "#34D990", UiText.HintSelect));
-        LsHints.Add(HintChips.Create("Y", "#6BABFF", UiText.HintGrab));
-        LsHints.Add(HintChips.Create("B", "#FF6B9D", UiText.HintBack));
-        LsHints.Add(HintChips.Create("R", "#60C0FF", UiText.HintCry));
+        LsHints.Add(HintChips.Create("A", "#34D990", UiText.HintSelect,       () => OnHintKeyPressed("A")));
+        LsHints.Add(HintChips.Create("Y", "#6BABFF", UiText.HintGrab,         () => OnHintKeyPressed("Y")));
+        LsHints.Add(HintChips.Create("B", "#FF6B9D", UiText.HintBack,         () => OnHintKeyPressed("B")));
+        LsHints.Add(HintChips.Create("R", "#60C0FF", UiText.HintCry,          () => OnHintKeyPressed("R")));
 
-        var editChip = HintChips.Create("≡", "#F0C040", UiText.HintEdit);
-        editChip.GestureRecognizers.Add(new TapGestureRecognizer
+        // X 徽章已按用户反馈取消：详情浮层统一由 A（选中）打开，浮层右上角「切换」换视图。
+        // 手柄上开动作菜单的键是 Start（不是 ≡），徽章按真实键名写
+        LsHints.Add(HintChips.Create(UiText.KeyStartChar, "#F0C040", UiText.HintEdit, OpenActionMenu));
+    }
+
+    // ──────────────────────────────────────────────
+    //  竖屏提示条：让 A / Y / B / R 四片与横屏一样可点
+    //  （XAML 里只给「Start 编辑」那片挂了手势，其余是纯装饰）
+    // ──────────────────────────────────────────────
+
+    private bool _portraitHintsBound;
+
+    private void BindPortraitHintTaps()
+    {
+        if (_portraitHintsBound) return;
+        if (HintBadges.Children.Count < 4) return;
+        _portraitHintsBound = true;
+
+        string[] keys = ["A", "Y", "B", "R"];
+        int i = 0;
+        foreach (var child in HintBadges.Children)
         {
-            Command = new Command(() => OpenActionMenu()),
-        });
-        LsHints.Add(editChip);
+            if (i >= keys.Length) break;
+
+            View? target = child is Microsoft.Maui.Controls.Layout layout && layout.Children.Count > 0
+                ? layout.Children[0] as View
+                : child as View;
+            if (target is null) continue;
+
+            var key = keys[i++];
+            target.GestureRecognizers.Add(new TapGestureRecognizer
+            {
+                Command = new Command(() => OnHintKeyPressed(key)),
+            });
+        }
     }
 
     private SaveSwitcherSheet? _saveSwitcher;
@@ -517,7 +623,7 @@ public partial class GamePage : ContentPage
     private void EnsureSaveSwitcher()
     {
         if (_saveSwitcher is not null) return;
-        _saveSwitcher = new SaveSwitcherSheet(_session, OnSavePickedAsync);
+        _saveSwitcher = new SaveSwitcherSheet(_session, OnSavePickedAsync, UiText.BoxSwitchNote);
         Grid.SetRow(_saveSwitcher, 0);
         Grid.SetColumn(_saveSwitcher, 0);
         Grid.SetRowSpan(_saveSwitcher, 2);
@@ -1317,39 +1423,20 @@ public partial class GamePage : ContentPage
     private async void PlayCry(string speciesName)
     {
         var slug = ToShowdownSlug(speciesName);
-        if (slug == _lastCrySlug) return;
+        if (string.IsNullOrWhiteSpace(slug) || slug == _lastCrySlug) return;
         _lastCrySlug = slug;
 
-        var cryDir  = System.IO.Path.Combine(FileSystem.CacheDirectory, "cries");
-        var cryPath = System.IO.Path.Combine(cryDir, slug + ".ogg");
+        bool ok = await CryService.PlayAsync(slug);
+        if (!ok && _lastCrySlug == slug) _lastCrySlug = "";   // 拿不到文件就放开防抖，允许重按重试
+    }
 
-        if (!File.Exists(cryPath))
-        {
-            Directory.CreateDirectory(cryDir);
-            try
-            {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-                var bytes = await http.GetByteArrayAsync(
-                    $"https://play.pokemonshowdown.com/audio/cries/{slug}.ogg");
-                await File.WriteAllBytesAsync(cryPath, bytes);
-            }
-            catch { return; }
-        }
-
-        // Guard: species may have changed while we were downloading
-        if (_lastCrySlug != slug) return;
-
-        _cryPlayer?.Stop();
-        _cryPlayer?.Reset();
-        _cryPlayer?.Release();
-        _cryPlayer = new Android.Media.MediaPlayer();
-        try
-        {
-            _cryPlayer.SetDataSource(cryPath);
-            _cryPlayer.Prepare();
-            _cryPlayer.Start();
-        }
-        catch { _cryPlayer?.Release(); _cryPlayer = null; }
+    /// <summary>预取当前宝可梦的叫声（打开详情/选中格子时调用），点 R 时大概率已落地。</summary>
+    private void PrefetchCry(PKM? pk)
+    {
+        if (pk is null || pk.Species <= 0) return;
+        var en = EnStrings.specieslist;
+        var name = pk.Species < en.Length ? en[pk.Species] : "";
+        CryService.Prefetch(CryService.Slug(name));
     }
 #endif
 
@@ -1569,8 +1656,8 @@ public partial class GamePage : ContentPage
 
         if (_currentBox[index].Species != 0)
         {
-            if (index == _selectedSlot) _ = OpenEditor();
-            else SelectSlot(index);
+            // 点格子只负责选中并打开详情；「再点一次进编辑器」的旧快捷已取消（用户 2026-11-26 定）
+            SelectSlot(index);
         }
         else
         {
@@ -1640,10 +1727,7 @@ public partial class GamePage : ContentPage
                 if (_moveMode) { ExecuteMove(); break; }
                 if (_searchMode) { NavigateToSearchResult(_cursorSlot); break; }
                 if (_cursorSlot < _currentBox.Length && _currentBox[_cursorSlot].Species != 0)
-                {
-                    if (_cursorSlot == _selectedSlot) _ = OpenEditor();
-                    else SelectSlot(_cursorSlot);
-                }
+                    SelectSlot(_cursorSlot);   // 与点击一致：A 只打开详情，不再直达编辑器
                 break;
 
             case Android.Views.Keycode.ButtonB:
@@ -1656,20 +1740,15 @@ public partial class GamePage : ContentPage
             case KeyMap.BankInKey: _ = SwapToBank(+1); break;
 
             case Android.Views.Keycode.ButtonX:
-                if (_isLandscapePhone && TopScreenPanel.IsVisible && TopSelectedPanel.IsVisible)
-                {
-                    _landscapeDetailView = (_landscapeDetailView + 1) % 3;
-                    ApplyLandscapeDetailView();
-                }
-                else
-                    OnSearchClicked(this, EventArgs.Empty);
+                // 横屏已取消 X 视图（详情统一由 A 打开）；竖屏沿用原行为（进数据库页）
+                if (!_isLandscapePhone) OnSearchClicked(this, EventArgs.Empty);
                 break;
             case Android.Views.Keycode.ButtonY:
                 if (_moveMode) { CancelMoveMode(); break; }
                 if (_searchMode) break;
+                // Y 只有抓取：光标在空格时不跳礼物页（用户 2026-11-26 定稿）
                 if (_cursorSlot < _currentBox.Length && _currentBox[_cursorSlot].Species != 0)
-                { EnterMoveMode(); break; }
-                OnGiftsClicked(this, EventArgs.Empty);
+                    EnterMoveMode();
                 break;
             case Android.Views.Keycode.ButtonSelect: OnSettingsClicked(this, EventArgs.Empty); break;
             case Android.Views.Keycode.ButtonStart:  OpenActionMenu(); break;
@@ -1863,29 +1942,65 @@ public partial class GamePage : ContentPage
     private async Task ShowPhoneDetailSheetAsync(PKM pk)
     {
         _phoneSheetPk = pk;
-        UpdatePhoneSheetContent(pk);
+        int seq = ++PhoneSheetSeq;      // 使任何在途的隐藏动画收尾失效
 
+        // 顺序很关键：先定宽（占位高度依赖列宽）→ 填内容 → 排内容（列/行）
+        // → 再量竖屏高度（必须在内容填完之后量，否则量到上一只的尺寸）
+        ApplySheetSize();
+        UpdatePhoneSheetContent(pk);
+        ApplySheetContentLayout();
+        ApplySheetHeight();
+        PrefetchCry(pk);   // 后台预取叫声，避免第一次按 R 等网络
+
+        PhoneSheetPanel.TranslationY = 0;   // 兜底：清掉历史位移残留
         PhoneDetailSheet.InputTransparent = false;
         PhoneSheetScrim.InputTransparent  = false;
 
-        // Parallel: fade scrim in + slide panel up
-        var fadeIn = PhoneSheetScrim.FadeToAsync(0.55, 220, Easing.CubicOut);
-        var slideUp = PhoneSheetPanel.TranslateToAsync(0, 0, 260, Easing.CubicOut);
-        await Task.WhenAll(fadeIn, slideUp);
+        // 淡入 + 轻微放大（不再从底部上滑）
+        PhoneSheetScrim.Opacity = 0;
+        PhoneSheetPanel.Opacity = 0;
+        PhoneSheetPanel.Scale   = 0.96;
+        _phoneSheetVisible = true;          // 动画前就置位，淡入中按返回也能先关卡片
 
-        _phoneSheetVisible = true;
+        var fadeIn  = PhoneSheetScrim.FadeToAsync(0.55, 200, Easing.CubicOut);
+        var fadePnl = PhoneSheetPanel.FadeToAsync(1, 220, Easing.CubicOut);
+        var scaleUp = PhoneSheetPanel.ScaleToAsync(1, 220, Easing.CubicOut);
+        await Task.WhenAll(fadeIn, fadePnl, scaleUp);
+
+        if (seq != PhoneSheetSeq) return;   // 期间被隐藏/切换过，收尾交给新的那次
     }
 
     private async Task HidePhoneDetailSheetAsync()
     {
+        if (!_phoneSheetVisible) return;
+        int seq = ++PhoneSheetSeq;
         _phoneSheetVisible = false;
         PhoneSheetScrim.InputTransparent = true;
 
-        var fadeOut = PhoneSheetScrim.FadeToAsync(0, 180, Easing.CubicIn);
-        var slideDown = PhoneSheetPanel.TranslateToAsync(0, 600, 220, Easing.CubicIn);
-        await Task.WhenAll(fadeOut, slideDown);
+        var fadeOut   = PhoneSheetScrim.FadeToAsync(0, 160, Easing.CubicIn);
+        var fadePnl   = PhoneSheetPanel.FadeToAsync(0, 160, Easing.CubicIn);
+        var scaleDown = PhoneSheetPanel.ScaleToAsync(0.96, 180, Easing.CubicIn);
+        await Task.WhenAll(fadeOut, fadePnl, scaleDown);
+
+        if (seq != PhoneSheetSeq) return;   // 期间又打开了新卡片，不要清掉它
 
         PhoneDetailSheet.InputTransparent = true;
+        PhoneSheetPanel.TranslationY = 0;
+        PhoneSheetPanel.Scale        = 1;
+        _phoneSheetPk = null;
+    }
+
+    /// <summary>瞬时隐藏详情卡片（无动画），用于「编辑宝可梦」这类紧接着导航的场景。</summary>
+    private void HidePhoneDetailSheetImmediate()
+    {
+        PhoneSheetSeq++;              // 让在途的淡入/淡出收尾全部失效
+        _phoneSheetVisible = false;
+        PhoneSheetPanel.Opacity = 0;
+        PhoneSheetPanel.Scale   = 1;
+        PhoneSheetPanel.TranslationY = 0;
+        PhoneSheetScrim.Opacity = 0;
+        PhoneDetailSheet.InputTransparent = true;
+        PhoneSheetScrim.InputTransparent  = true;
         _phoneSheetPk = null;
     }
 
@@ -1930,7 +2045,172 @@ public partial class GamePage : ContentPage
                     Color.FromUint((uint)((tc.Alpha << 24) | (tc.Red << 16) | (tc.Green << 8) | tc.Blue)));
         }
 
+        // 能力视图 —— 注意 Stat_* 是「队伍区战斗数值」，盒子里的宝可梦恒为 0；
+        // 因此这里按 种族值 + IV + EV + 等级 + 性格 现场计算（GetStats 返回 [HP,ATK,DEF,SPE,SPA,SPD]）
+        {
+            ushort[] st = pk.PartyStatsPresent
+                ? [ (ushort)pk.Stat_HPMax, (ushort)pk.Stat_ATK, (ushort)pk.Stat_DEF,
+                    (ushort)pk.Stat_SPE, (ushort)pk.Stat_SPA, (ushort)pk.Stat_SPD ]
+                : pk.GetStats(pk.PersonalInfo);
+            PhoneStatHP.Text  = st[0].ToString();
+            PhoneStatATK.Text = st[1].ToString();
+            PhoneStatDEF.Text = st[2].ToString();
+            PhoneStatSPE.Text = st[3].ToString();
+            PhoneStatSPA.Text = st[4].ToString();
+            PhoneStatSPD.Text = st[5].ToString();
+        }
+
+        // 详情视图
+        PhoneInfoAbility.Text = pk.Ability < _strings.abilitylist.Length
+            ? _strings.abilitylist[pk.Ability] : "—";
+        PhoneInfoItem.Text = pk.HeldItem > 0 && pk.HeldItem < _strings.itemlist.Length
+            ? _strings.itemlist[pk.HeldItem] : "无";
+        PhoneInfoGender.Text = pk.Gender switch { 0 => "♂ 雄性", 1 => "♀ 雌性", _ => "无性别" };
+        PhoneInfoBall.Text = pk.Ball < _strings.balllist.Length
+            ? _strings.balllist[pk.Ball] : "—";
+
         PhoneSheetCanvas.InvalidateSurface();
+    }
+
+    // ──────────────────────────────────────────────
+    //  详情卡片尺寸与内容排布
+    // ──────────────────────────────────────────────
+
+    /// <summary>卡片宽度：宽 min(屏宽×0.92, 560)（横竖屏相同）。竖屏高度先复位，由 ApplySheetHeight 量出后写回。</summary>
+    private void ApplySheetSize()
+    {
+        double w = Width  > 0 ? Width  : (Window?.Width  ?? 400);
+        double h = Height > 0 ? Height : (Window?.Height ?? 700);
+        PhoneSheetPanel.WidthRequest = Math.Min(w * 0.92, 560);
+        _sheetMaxH = Math.Min(h * 0.94, 760);
+
+        if (_isLandscapePhone)
+        {
+            // 横屏：保持 test6 的固定卡片高（用户已验收，勿改）
+            PhoneSheetPanel.HeightRequest      = _sheetMaxH;
+            PhoneSheetPanel.MaximumHeightRequest = double.PositiveInfinity;   // 必须复位：优先级高于 HeightRequest
+            PhoneSheetPanel.MinimumHeightRequest = -1;
+            _sheetCardH = _sheetMaxH;
+        }
+        else
+        {
+            // 竖屏：先解除一切高度约束，等内容填完再测；测量期间 Maximum 必须为 ∞，否则量出来就是上限
+            PhoneSheetPanel.HeightRequest        = -1;
+            PhoneSheetPanel.MaximumHeightRequest = double.PositiveInfinity;
+            PhoneSheetPanel.MinimumHeightRequest = -1;
+            _sheetCardH = 0;
+        }
+    }
+
+    /// <summary>
+    /// 竖屏按内容量高。卡片内部是 Auto,*,Auto 的 Grid，MAUI 在受约束测量时会把 * 行吃满剩余高度
+    /// （所以直接让 HeightRequest=-1 会让卡片顶到 0.94 屏上限）。这里显式做一次无约束测量拿内容高度，
+    /// clamp 到 [240, min(0.94屏,760)] 后写回 HeightRequest；横屏保持固定高，直接返回。
+    /// </summary>
+    private void ApplySheetHeight()
+    {
+        if (_isLandscapePhone) { _sheetCardH = PhoneSheetPanel.HeightRequest; return; }
+
+        double maxH = _sheetMaxH > 0 ? _sheetMaxH : 700;
+        double cardW = PhoneSheetPanel.WidthRequest > 0 ? PhoneSheetPanel.WidthRequest : 360;
+        double desired = 0;
+        try { desired = PhoneSheetPanel.Measure(cardW, double.PositiveInfinity).Height; }
+        catch { /* 测量失败走兜底 */ }
+
+        double target = desired > 0 ? Math.Clamp(desired, 240, maxH) : maxH;
+        PhoneSheetPanel.HeightRequest = target;
+        _sheetCardH = target;
+    }
+
+    /// <summary>
+    /// 招式块按 4 招式占位：竖屏给招式网格设最小高度，使 1~4 招的卡片高度一致。
+    /// 用一行实测行高（空文本时临时填占位字）推 2×2 高度，与招式数和名字长短无关；失败兜底 72dp。
+    /// </summary>
+    private void ApplyMovesReserveHeight()
+    {
+        if (_isLandscapePhone)
+        {
+            PhoneSheetMovesGrid.MinimumHeightRequest = 0;
+            return;
+        }
+
+        var row   = PhoneMoveRow0;
+        var name  = PhoneMoveName0;
+        var pp    = PhoneMovePP0;
+        bool  savedVis  = row.IsVisible;
+        string savedName = name.Text;
+        string savedPp   = pp.Text;
+
+        double rowH = -1;
+        try
+        {
+            row.IsVisible = true;
+            if (string.IsNullOrEmpty(name.Text)) name.Text = "招式";
+            if (string.IsNullOrEmpty(pp.Text))   pp.Text   = "PP 99";
+
+            double colW = ((PhoneSheetPanel.WidthRequest > 0 ? PhoneSheetPanel.WidthRequest : 360) - 32 - 8) / 2;
+            if (colW < 60) colW = 60;
+            rowH = row.Measure(colW, double.PositiveInfinity).Height;
+        }
+        catch { /* Measure 偶发失败时走兜底 */ }
+        finally
+        {
+            row.IsVisible = savedVis;
+            name.Text     = savedName;
+            pp.Text       = savedPp;
+        }
+
+        PhoneSheetMovesGrid.MinimumHeightRequest = rowH > 20 ? (rowH * 2 + 6) : 72;
+    }
+
+    /// <summary>
+    /// 横屏且内容区够高时排三列（招式 | 能力 | 详情），否则单列串联（ScrollView 兜底）。
+    /// 内容区高 ≈ 卡片高 - Header(104) - 底栏(44) - 内边距与行距(约 48)。
+    /// </summary>
+    private void ApplySheetContentLayout()
+    {
+        double cardH = _sheetCardH > 0 ? _sheetCardH
+                     : (PhoneSheetPanel.HeightRequest > 0 ? PhoneSheetPanel.HeightRequest : 400);
+        double cardW = PhoneSheetPanel.WidthRequest  > 0 ? PhoneSheetPanel.WidthRequest  : 360;
+        double contentH = cardH - 196;
+        bool threeCol = _isLandscapePhone && contentH >= 160 && cardW >= 500;
+
+        PhoneSheetContent.ColumnDefinitions.Clear();
+        PhoneSheetContent.RowDefinitions.Clear();
+
+        View[] views = [PhoneSheetMovesView, PhoneSheetStatsView, PhoneSheetInfoView];
+        for (int i = 0; i < views.Length; i++)
+            views[i].IsVisible = true;
+
+        if (threeCol)
+        {
+            for (int i = 0; i < views.Length; i++)
+                PhoneSheetContent.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            PhoneSheetContent.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+
+            for (int i = 0; i < views.Length; i++)
+            {
+                Grid.SetColumn(views[i], i);
+                Grid.SetRow(views[i], 0);
+                views[i].VerticalOptions = LayoutOptions.Fill;
+            }
+        }
+        else
+        {
+            PhoneSheetContent.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            for (int i = 0; i < views.Length; i++)
+                PhoneSheetContent.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+
+            for (int i = 0; i < views.Length; i++)
+            {
+                Grid.SetColumn(views[i], 0);
+                Grid.SetRow(views[i], i);
+                views[i].VerticalOptions = LayoutOptions.Start;
+            }
+        }
+
+        ApplyMovesReserveHeight();
+        _ = PhoneSheetScroll.ScrollToAsync(0, 0, false);
     }
 
     private void OnPhoneSheetSpritePaint(object sender, SKPaintSurfaceEventArgs e)
@@ -1951,7 +2231,11 @@ public partial class GamePage : ContentPage
 
     private void OnPhoneSheetEditTapped(object? sender, TappedEventArgs e)
     {
-        DeselectSlot();
+        // 不走淡出：160ms 动画会和紧接着的页面推入抢同一个 UI 线程，观感就是"点了半秒没反应"。
+        // 瞬时隐藏卡片 + 清选中态，但**不能**动 _cursorSlot —— OpenEditor 靠它定位格子。
+        _selectedSlot = -1;
+        BoxCanvas.InvalidateSurface();
+        HidePhoneDetailSheetImmediate();
         _ = OpenEditor();
     }
 
@@ -2310,10 +2594,14 @@ public partial class GamePage : ContentPage
         }
         catch (Exception ex)
         {
-            bool isPermission = ex.Message.Contains("Permission") || ex.Message.Contains("permission");
-            string msg = isPermission
-                ? "写入权限被拒绝。请到「设置 → 查找 Azahar / MelonDS / RetroArch 存档」重新授权文件夹后重试。"
-                : ex.Message;
+            // 权限问题正常情况下由 FileService 给出可直接照做的中文原因；
+            // 只有探测通过、真正写入时才被系统拒绝的兜底情况，才需要替换掉系统英文原文。
+            string msg = ex.Message;
+#if ANDROID
+            if (ex is Java.Lang.SecurityException)
+                msg = "系统拒绝了这次写入。请到「文件夹管理」重新添加这张存档（或改用「添加文件夹」），"
+                    + "并确认首页顶部「所有文件访问」已授权。\n\n" + ex.Message;
+#endif
             await DisplayAlertAsync("保存失败", msg, "OK");
             return false;
         }

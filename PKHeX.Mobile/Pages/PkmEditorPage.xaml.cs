@@ -120,15 +120,21 @@ public partial class PkmEditorPage : ContentPage
         _pk = _isParty
             ? _session.ActiveSave.GetPartySlotAtIndex(_slotIndex)
             : _session.ActiveSave.GetBoxSlotAtIndex(_boxIndex, _slotIndex);
-        await _sprites.PreloadBoxAsync([_pk]);
-        PopulateControls();
-        _dirty = false;
-        HookDirtySignals();
+
+        // 复用同一页面实例（AddSingleton）：每次进场都要复位一次性状态
+        _dirtyHooked = false;          // 填充过程不算用户改动
+        SwitchTab(0);                  // 每次进场回到「能力」页，避免停在上一只的标签上
+        PopulateControls();            // 先把文字/数值填好（立绘随后补，避免"进了页但空着"）
+        _dirty         = false;
+        _legalityResult = null;
+        LegalityBadge.Text = "";
+        HookDirtySignals();            // 内部只在首次真正挂钩，避免重复订阅
         RefreshSaveButton();
         SpriteCanvas.InvalidateSurface();
         UpdateRowHighlight();
-        _legalityResult = null;
-        LegalityBadge.Text = "";
+
+        await _sprites.PreloadBoxAsync([_pk]);
+        SpriteCanvas.InvalidateSurface();   // 立绘到位后重绘
     }
 
     protected override void OnDisappearing()
@@ -139,6 +145,10 @@ public partial class PkmEditorPage : ContentPage
         GamepadRouter.KeyReceived -= OnGamepadKey;
 #endif
         StopDpadRepeat();
+        // 复用实例：清掉路由参数残留，下一次没带 party 参数时不会沿用上次的值
+        _isParty   = false;
+        _boxIndex  = 0;
+        _slotIndex = 0;
     }
 
     private void StopDpadRepeat()
@@ -684,6 +694,8 @@ public partial class PkmEditorPage : ContentPage
 
     private bool _dirty;
     private bool _dirtyHooked;
+    /// <summary>脏标记事件是否已挂过。页面实例被复用（AddSingleton），只能挂一次。</summary>
+    private bool _signalsHooked;
 
 #if ANDROID
     /// <summary>系统返回 / 手势返回：与 B 一致 —— 有未保存改动就先问是否保存。</summary>
@@ -720,9 +732,11 @@ public partial class PkmEditorPage : ContentPage
     /// <summary>给所有输入控件挂「一改就置 dirty」的监听；PopulateControls 期间先关掉。</summary>
     private void HookDirtySignals()
     {
+        if (_signalsHooked) return;   // 页面实例复用：事件只挂一次，否则每次进场都会叠加订阅
         _dirtyHooked = false;
         HookDirtySignalsRecursive(this);
         _dirtyHooked = true;
+        _signalsHooked = true;
     }
 
     private void HookDirtySignalsRecursive(IVisualTreeElement el)

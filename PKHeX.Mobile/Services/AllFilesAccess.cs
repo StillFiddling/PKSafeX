@@ -38,31 +38,43 @@ public static class AllFilesAccess
     public static void OpenSettings()
     {
 #if ANDROID
+        // 这两个「所有文件访问」系统页都是 API 30+ 才有：用 SDKInt 判断（CA1416 能识别），
+        // 低版本退到应用详情页，别让老机器走到不存在的 Activity。
         try
         {
             var context = global::Android.App.Application.Context;
-            var uri = global::Android.Net.Uri.Parse("package:" + context.PackageName);
+            var pkgUri  = global::Android.Net.Uri.Parse("package:" + context.PackageName);
 
-            Intent intent;
-            if (OperatingSystem.IsAndroidVersionAtLeast(30))
-                intent = new Intent(Settings.ActionManageAppAllFilesAccessPermission, uri);
-            else
-                intent = new Intent(Settings.ActionManageAllFilesAccessPermission);
-
-            intent.AddFlags(ActivityFlags.NewTask);
-            context.StartActivity(intent);
-        }
-        catch
-        {
-            try
+            if (global::Android.OS.Build.VERSION.SdkInt >= global::Android.OS.BuildVersionCodes.R)
             {
-                var context = global::Android.App.Application.Context;
-                var intent = new Intent(Settings.ActionManageAllFilesAccessPermission);
-                intent.AddFlags(ActivityFlags.NewTask);
-                context.StartActivity(intent);
+                // 上面已用 SDKInt 做了运行时版本判断，低版本不会走到这里；
+                // 但 CA1416 认不出 Build.VERSION.SdkInt 这种写法，就地抑制。
+#pragma warning disable CA1416
+                try
+                {
+                    var intent = new Intent(Settings.ActionManageAppAllFilesAccessPermission, pkgUri);
+                    intent.AddFlags(ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                    return;
+                }
+                catch { }
+
+                try
+                {
+                    var intent = new Intent(Settings.ActionManageAllFilesAccessPermission, pkgUri);
+                    intent.AddFlags(ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                    return;
+                }
+                catch { }
+#pragma warning restore CA1416
             }
-            catch { }
+
+            var details = new Intent(Settings.ActionApplicationDetailsSettings, pkgUri);
+            details.AddFlags(ActivityFlags.NewTask);
+            context.StartActivity(details);
         }
+        catch { }
 #endif
     }
 

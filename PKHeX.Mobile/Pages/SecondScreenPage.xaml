@@ -669,10 +669,21 @@
               BackgroundColor="{DynamicResource ThPageBg}">
 
             <!-- Header -->
-            <Grid Grid.Row="0" Padding="18,14,18,8" ColumnDefinitions="*,Auto">
+            <Grid Grid.Row="0" Padding="18,14,18,8" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                 <Label Text="存档文件" FontFamily="Quicksand" FontSize="12"
                        TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.5" VerticalOptions="Center" />
-                <Border Grid.Column="1" StrokeShape="RoundRectangle 6"
+                <!-- 设置入口（双屏模式下主屏提示条是隐藏的，这里补一个触摸可达的入口） -->
+                <Border Grid.Column="1" StrokeShape="RoundRectangle 8"
+                        BackgroundColor="{DynamicResource ThBadgeBg}" Stroke="Transparent"
+                        Padding="8,5" VerticalOptions="Center">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnMenuSettingsTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static theme:Ph.Gear}" FontFamily="Phosphor" FontSize="16"
+                           TextColor="{DynamicResource ThTextSecondary}"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <Border Grid.Column="2" StrokeShape="RoundRectangle 6"
                         BackgroundColor="{DynamicResource ThBadgeBg}" Stroke="Transparent" Padding="10,3">
                     <Label x:Name="MenuSaveCountLabel" Text="0 saves"
                            FontFamily="NunitoBold" FontSize="10"
@@ -743,36 +754,23 @@
 
             <!-- Action bar -->
             <VerticalStackLayout Grid.Row="2" Padding="14,10,14,14" Spacing="10">
-                <Border x:Name="Menu_OpenBoxes"
-                        StrokeShape="RoundRectangle 14"
-                        Stroke="Transparent" StrokeThickness="1.5"
-                        Padding="0" HeightRequest="48">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#EAF5FF" Offset="0" />
-                            <GradientStop Color="#CCE8FF" Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
-                    <Label Text="打开箱子" FontFamily="NunitoExtraBold" FontSize="15"
-                           TextColor="#1A5A96" HorizontalOptions="Center" VerticalOptions="Center" />
-                </Border>
                 <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
-                    <Border x:Name="Menu_Search" Grid.Column="0" StrokeShape="RoundRectangle 8"
+                    <Border x:Name="Menu_Boxes" Grid.Column="2" StrokeShape="RoundRectangle 8"
                             BackgroundColor="{DynamicResource ThCardBg}"
                             Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
                             Padding="0" HeightRequest="70">
                         <VerticalStackLayout Spacing="5" VerticalOptions="Center" HorizontalOptions="Center">
-                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="#1FA78BFA"
+                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="#1F3B8BFF"
                                     WidthRequest="34" HeightRequest="34" HorizontalOptions="Center">
-                                <Label Text="{x:Static theme:Ph.MagnifyingGlass}" FontFamily="Phosphor"
-                                       FontSize="20" TextColor="#A78BFA"
+                                <Label Text="{x:Static theme:Ph.Package}" FontFamily="Phosphor"
+                                       FontSize="20" TextColor="#3B8BFF"
                                        HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
-                            <Label Text="搜索" FontFamily="NunitoBold" FontSize="10"
+                            <Label Text="箱子" FontFamily="NunitoBold" FontSize="10"
                                    TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
                         </VerticalStackLayout>
                     </Border>
-                    <Border x:Name="Menu_Gifts" Grid.Column="1" StrokeShape="RoundRectangle 8"
+                    <Border x:Name="Menu_Gifts" Grid.Column="0" StrokeShape="RoundRectangle 8"
                             BackgroundColor="{DynamicResource ThCardBg}"
                             Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
                             Padding="0" HeightRequest="70">
@@ -787,7 +785,7 @@
                                    TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
                         </VerticalStackLayout>
                     </Border>
-                    <Border x:Name="Menu_Export" Grid.Column="2" StrokeShape="RoundRectangle 8"
+                    <Border x:Name="Menu_Export" Grid.Column="1" StrokeShape="RoundRectangle 8"
                             BackgroundColor="{DynamicResource ThCardBg}"
                             Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
                             Padding="0" HeightRequest="70">

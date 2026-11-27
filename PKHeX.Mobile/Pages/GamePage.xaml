@@ -421,14 +421,14 @@
                 </Border>
             </Grid>
 
-            <!-- Search bar -->
+            <!-- Search bar（竖屏：整行；横屏：改作画布左上角的固定宽浮层，见 ApplyPhoneLayout） -->
             <Border x:Name="BoxSearchRow" Grid.Row="3"
                     StrokeShape="RoundRectangle 10"
                     BackgroundColor="{DynamicResource ThCardBg}"
                     Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
                     Margin="12,0,12,6" Padding="0"
                     HeightRequest="44">
-                <Grid ColumnDefinitions="Auto,*">
+                <Grid ColumnDefinitions="Auto,*,Auto">
                     <Label Text="{x:Static theme:Ph.MagnifyingGlass}" FontFamily="Phosphor" FontSize="16"
                            TextColor="{DynamicResource ThTextDim}"
                            VerticalOptions="Center" Margin="10,0,0,0" />
@@ -436,9 +436,18 @@
                            Placeholder="{x:Static svc:UiText.SearchSpecies}" FontFamily="Nunito" FontSize="13"
                            TextColor="{DynamicResource ThTextPrimary}"
                            PlaceholderColor="{DynamicResource ThTextHint}"
-                           BackgroundColor="Transparent" Margin="4,0,8,0"
+                           BackgroundColor="Transparent" Margin="4,0,4,0"
                            ReturnType="Search"
                            TextChanged="OnSearchTextChanged" />
+                    <!-- ✕ 显式清空：点画布空白只收起浮层、保留过滤，清空要走这里 -->
+                    <Label x:Name="SearchClearBtn" Grid.Column="2"
+                           Text="✕" FontFamily="NunitoBold" FontSize="14"
+                           TextColor="{DynamicResource ThTextDim}"
+                           VerticalOptions="Center" Margin="2,0,10,0">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnClearSearchTapped" />
+                        </Label.GestureRecognizers>
+                    </Label>
                 </Grid>
             </Border>
 
@@ -451,6 +460,21 @@
                     <TapGestureRecognizer Tapped="OnBoxTapped" />
                 </skia:SKCanvasView.GestureRecognizers>
             </skia:SKCanvasView>
+
+            <!-- 横屏专用：放大镜（浮在画布左上角、正好落在 ◀▶ 行下方，不占格子高度） -->
+            <Border x:Name="BoxSearchBtn" Grid.Row="4" IsVisible="False" ZIndex="9"
+                    StrokeShape="RoundRectangle 10"
+                    HorizontalOptions="Start" VerticalOptions="Start"
+                    BackgroundColor="{DynamicResource ThCardBg}"
+                    Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                    WidthRequest="36" HeightRequest="36" Margin="12,2,0,0">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSearchBoxTapped" />
+                </Border.GestureRecognizers>
+                <Label Text="{x:Static theme:Ph.MagnifyingGlass}" FontFamily="Phosphor"
+                       FontSize="16" TextColor="{DynamicResource ThTextSecondary}"
+                       HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
 
             <!-- Info bar（两行：上行信息、下行提示按键，竖屏不挤在一起） -->
             <Grid Grid.Row="5" x:Name="InfoBarGrid" ColumnDefinitions="*" RowDefinitions="Auto,Auto" RowSpacing="6" Padding="16,8,16,12">
@@ -546,7 +570,7 @@
                             <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
                                 <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
                                         StrokeThickness="0" Padding="5,2">
-                                    <Label Text="≡" FontFamily="NunitoExtraBold" FontSize="9"
+                                    <Label Text="{x:Static svc:UiText.KeyStartChar}" FontFamily="NunitoExtraBold" FontSize="9"
                                            TextColor="#F0C040"
                                            HorizontalOptions="Center" VerticalOptions="Center" />
                                 </Border>
@@ -559,7 +583,15 @@
                 </ScrollView>
             </Grid>
 
-            <!-- 横屏单栏底栏：左下存档/训练家（可点切换）、右下功能按键徽章 -->
+            <!-- 横屏：点画布空白收起搜索浮层（保留过滤），不打断选格 -->
+            <BoxView x:Name="LsSearchDismiss" Grid.Row="4" IsVisible="False" ZIndex="10"
+                     BackgroundColor="#01000000">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSearchOverlayDismissTapped" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <!-- 横屏单栏底栏：左存档/训练家（可点切换）、中间功能徽章、右侧「银行 ▸」导航 -->
             <Grid x:Name="LsBottomBar" Grid.Row="5" IsVisible="False"
                   ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10"
                   Padding="12,4,12,8"
@@ -582,8 +614,26 @@
                            VerticalOptions="Center" />
                 </HorizontalStackLayout>
 
-                <HorizontalStackLayout x:Name="LsHints" Grid.Column="2" Spacing="6"
-                                       HorizontalOptions="End" VerticalOptions="Center" />
+                <!-- 徽章居中：窄屏放不下时横向滚动，不挤掉左右两端 -->
+                <ScrollView Grid.Column="1" Orientation="Horizontal"
+                            HorizontalScrollBarVisibility="Never"
+                            VerticalOptions="Center">
+                    <HorizontalStackLayout x:Name="LsHints" Spacing="6"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </ScrollView>
+
+                <!-- 横屏箱子页去掉了顶部银行入口，统一在底栏右侧给 -->
+                <Border x:Name="LsToBankBtn" Grid.Column="2"
+                        StrokeShape="RoundRectangle 8"
+                        BackgroundColor="{DynamicResource ThNavBtnBg}"
+                        Stroke="{DynamicResource ThNavBtnStroke}" StrokeThickness="1"
+                        Padding="12,8" VerticalOptions="Center">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnToBankTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{x:Static svc:UiText.BankArrow}" FontFamily="NunitoBold" FontSize="12"
+                           TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
             </Grid>
 
         </Grid>
@@ -603,19 +653,20 @@
                 </BoxView.GestureRecognizers>
             </BoxView>
 
-            <!-- Sheet panel — starts off-screen below -->
+            <!-- Sheet panel — 固定尺寸居中卡片（尺寸由 ApplySheetSize 按屏幕重算） -->
             <Border x:Name="PhoneSheetPanel"
-                    VerticalOptions="End"
-                    TranslationY="600"
-                    StrokeShape="RoundRectangle 20,20,0,0"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Opacity="0"
+                    StrokeShape="RoundRectangle 20"
                     BackgroundColor="{DynamicResource ThActionMenuPanel}"
                     Stroke="{DynamicResource ThActionMenuStroke}"
                     StrokeThickness="1"
-                    Padding="16,14,16,24">
-                <Grid RowDefinitions="Auto,Auto" RowSpacing="14">
+                    Padding="16,14,16,14">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
 
                     <!-- Header: sprite + name/types/level -->
-                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                         <skia:SKCanvasView x:Name="PhoneSheetCanvas"
                                            WidthRequest="90" HeightRequest="90"
                                            PaintSurface="OnPhoneSheetSpritePaint"/>
@@ -623,13 +674,15 @@
                             <HorizontalStackLayout x:Name="PhoneSheetTypeBadges" Spacing="5"/>
                             <Label x:Name="PhoneSheetSpecies"
                                    FontFamily="NunitoExtraBold" FontSize="20"
-                                   TextColor="{DynamicResource ThTextPrimary}"/>
+                                   TextColor="{DynamicResource ThTextPrimary}"
+                                   MaxLines="1" LineBreakMode="TailTruncation"/>
                             <Label x:Name="PhoneSheetLevelNature"
                                    FontFamily="Nunito" FontSize="12"
-                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                   TextColor="{DynamicResource ThTextSecondary}"
+                                   MaxLines="1" LineBreakMode="TailTruncation"/>
                         </VerticalStackLayout>
 
-                        <!-- 右上角竖排小按键：Y 抓取 / R3 叫声 / 存入银行 -->
+                        <!-- 右上角竖排小按键（「切换」已取消）：R3 叫声 / Y 抓取 / 存入银行 / 放生 -->
                         <VerticalStackLayout Grid.Column="2" Spacing="4"
                                              VerticalOptions="Start" HorizontalOptions="End">
                             <Border x:Name="PhoneSheetCryBtn" StrokeShape="RoundRectangle 6"
@@ -675,86 +728,250 @@
                         </VerticalStackLayout>
                     </Grid>
 
-                    <!-- Moves + edit button -->
-                    <VerticalStackLayout Grid.Row="1" Spacing="6">
-                        <Label Text="招式" FontFamily="NunitoBold" FontSize="9"
-                               TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"
-                               Margin="0,0,0,2"/>
-                        <Border x:Name="PhoneMoveRow0" StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThMoveRowBg}"
-                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
-                                Padding="10,9">
-                            <Grid ColumnDefinitions="10,*,Auto">
-                                <Ellipse x:Name="PhoneMoveDot0" Grid.Column="0" Fill="#A8A878"
-                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
-                                <Label x:Name="PhoneMoveName0" Grid.Column="1" Margin="8,0,0,0"
-                                       FontFamily="NunitoBold" FontSize="13"
-                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center"/>
-                                <Label x:Name="PhoneMovePP0" Grid.Column="2"
-                                       FontFamily="Nunito" FontSize="11"
-                                       TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-                        <Border x:Name="PhoneMoveRow1" StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThMoveRowBg}"
-                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
-                                Padding="10,9">
-                            <Grid ColumnDefinitions="10,*,Auto">
-                                <Ellipse x:Name="PhoneMoveDot1" Grid.Column="0" Fill="#A8A878"
-                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
-                                <Label x:Name="PhoneMoveName1" Grid.Column="1" Margin="8,0,0,0"
-                                       FontFamily="NunitoBold" FontSize="13"
-                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center"/>
-                                <Label x:Name="PhoneMovePP1" Grid.Column="2"
-                                       FontFamily="Nunito" FontSize="11"
-                                       TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-                        <Border x:Name="PhoneMoveRow2" StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThMoveRowBg}"
-                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
-                                Padding="10,9">
-                            <Grid ColumnDefinitions="10,*,Auto">
-                                <Ellipse x:Name="PhoneMoveDot2" Grid.Column="0" Fill="#A8A878"
-                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
-                                <Label x:Name="PhoneMoveName2" Grid.Column="1" Margin="8,0,0,0"
-                                       FontFamily="NunitoBold" FontSize="13"
-                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center"/>
-                                <Label x:Name="PhoneMovePP2" Grid.Column="2"
-                                       FontFamily="Nunito" FontSize="11"
-                                       TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-                        <Border x:Name="PhoneMoveRow3" StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThMoveRowBg}"
-                                Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
-                                Padding="10,9">
-                            <Grid ColumnDefinitions="10,*,Auto">
-                                <Ellipse x:Name="PhoneMoveDot3" Grid.Column="0" Fill="#A8A878"
-                                         WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
-                                <Label x:Name="PhoneMoveName3" Grid.Column="1" Margin="8,0,0,0"
-                                       FontFamily="NunitoBold" FontSize="13"
-                                       TextColor="{DynamicResource ThTextPrimary}" VerticalOptions="Center"/>
-                                <Label x:Name="PhoneMovePP3" Grid.Column="2"
-                                       FontFamily="Nunito" FontSize="11"
-                                       TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
+                    <!-- 内容区：可滚动。横屏够宽时排三列（招式 | 能力 | 详情），否则单列串联 -->
+                    <ScrollView x:Name="PhoneSheetScroll" Grid.Row="1"
+                                VerticalScrollBarVisibility="Never">
+                        <Grid x:Name="PhoneSheetContent" RowSpacing="10" ColumnSpacing="12"
+                              Padding="0,2,0,2">
 
-                        <!-- Edit button -->
-                        <Border StrokeShape="RoundRectangle 10"
-                                BackgroundColor="{DynamicResource ThIconBgBlue}"
-                                Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
-                                Padding="0,11" Margin="0,4,0,0">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnPhoneSheetEditTapped"/>
-                            </Border.GestureRecognizers>
-                            <Label Text="编辑宝可梦" FontFamily="NunitoBold" FontSize="14"
-                                   TextColor="{DynamicResource ThTextPrimary}"
-                                   HorizontalOptions="Center"/>
-                        </Border>
-                    </VerticalStackLayout>
+                            <!-- 区块 1：招式（2×2 紧凑网格） -->
+                            <VerticalStackLayout x:Name="PhoneSheetMovesView" Spacing="6">
+                                <Label Text="招式" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"/>
+                                <Grid x:Name="PhoneSheetMovesGrid"
+                                      ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                                      ColumnSpacing="8" RowSpacing="6">
+                                    <Border x:Name="PhoneMoveRow0" Grid.Row="0" Grid.Column="0"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="10,*,Auto">
+                                            <Ellipse x:Name="PhoneMoveDot0" Grid.Column="0" Fill="#A8A878"
+                                                     WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneMoveName0" Grid.Column="1" Margin="6,0,0,0"
+                                                   FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                            <Label x:Name="PhoneMovePP0" Grid.Column="2"
+                                                   FontFamily="Nunito" FontSize="10"
+                                                   TextColor="{DynamicResource ThTextSecondary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="PhoneMoveRow1" Grid.Row="0" Grid.Column="1"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="10,*,Auto">
+                                            <Ellipse x:Name="PhoneMoveDot1" Grid.Column="0" Fill="#A8A878"
+                                                     WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneMoveName1" Grid.Column="1" Margin="6,0,0,0"
+                                                   FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                            <Label x:Name="PhoneMovePP1" Grid.Column="2"
+                                                   FontFamily="Nunito" FontSize="10"
+                                                   TextColor="{DynamicResource ThTextSecondary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="PhoneMoveRow2" Grid.Row="1" Grid.Column="0"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="10,*,Auto">
+                                            <Ellipse x:Name="PhoneMoveDot2" Grid.Column="0" Fill="#A8A878"
+                                                     WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneMoveName2" Grid.Column="1" Margin="6,0,0,0"
+                                                   FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                            <Label x:Name="PhoneMovePP2" Grid.Column="2"
+                                                   FontFamily="Nunito" FontSize="10"
+                                                   TextColor="{DynamicResource ThTextSecondary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="PhoneMoveRow3" Grid.Row="1" Grid.Column="1"
+                                            StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="10,*,Auto">
+                                            <Ellipse x:Name="PhoneMoveDot3" Grid.Column="0" Fill="#A8A878"
+                                                     WidthRequest="8" HeightRequest="8" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneMoveName3" Grid.Column="1" Margin="6,0,0,0"
+                                                   FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                            <Label x:Name="PhoneMovePP3" Grid.Column="2"
+                                                   FontFamily="Nunito" FontSize="10"
+                                                   TextColor="{DynamicResource ThTextSecondary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </VerticalStackLayout>
 
+                            <!-- 区块 2：能力（六项数值，2 列 3 行） -->
+                            <VerticalStackLayout x:Name="PhoneSheetStatsView" Spacing="6">
+                                <Label Text="能力" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"/>
+                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto"
+                                      RowSpacing="6" ColumnSpacing="8">
+                                    <Border Grid.Row="0" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="HP" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneStatHP" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="0" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="攻击" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneStatATK" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="防御" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneStatDEF" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="特攻" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneStatSPA" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="2" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="特防" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneStatSPD" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="2" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="速度" FontFamily="NunitoBold" FontSize="11"
+                                                   TextColor="{DynamicResource ThTextSecondary}" VerticalOptions="Center"/>
+                                            <Label x:Name="PhoneStatSPE" Grid.Column="1" FontFamily="NunitoExtraBold"
+                                                   FontSize="13" TextColor="{DynamicResource ThTextPrimary}"
+                                                   VerticalOptions="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <!-- 区块 3：详情（特性 / 道具 / 性别 / 球种，2 列 2 行） -->
+                            <VerticalStackLayout x:Name="PhoneSheetInfoView" Spacing="6">
+                                <Label Text="详情" FontFamily="NunitoBold" FontSize="9"
+                                       TextColor="{DynamicResource ThTextDim}" CharacterSpacing="1.2"/>
+                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                                      RowSpacing="6" ColumnSpacing="8">
+                                    <Border Grid.Row="0" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="特性" FontFamily="NunitoBold" FontSize="9"
+                                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                            <Label x:Name="PhoneInfoAbility" FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border Grid.Row="0" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="道具" FontFamily="NunitoBold" FontSize="9"
+                                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                            <Label x:Name="PhoneInfoItem" FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="0" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="性别" FontFamily="NunitoBold" FontSize="9"
+                                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                            <Label x:Name="PhoneInfoGender" FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="1" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{DynamicResource ThMoveRowBg}"
+                                            Stroke="{DynamicResource ThMoveRowStroke}" StrokeThickness="1"
+                                            Padding="8,7">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="球种" FontFamily="NunitoBold" FontSize="9"
+                                                   TextColor="{DynamicResource ThTextSecondary}"/>
+                                            <Label x:Name="PhoneInfoBall" FontFamily="NunitoBold" FontSize="12"
+                                                   TextColor="{DynamicResource ThTextPrimary}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </Grid>
+                            </VerticalStackLayout>
+
+                        </Grid>
+                    </ScrollView>
+
+                    <!-- 底部固定：编辑宝可梦（不随内容滚动，永远可见） -->
+                    <Border x:Name="PhoneSheetEditBtn" Grid.Row="2" StrokeShape="RoundRectangle 10"
+                            BackgroundColor="{DynamicResource ThIconBgBlue}"
+                            Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                            Padding="0,10">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnPhoneSheetEditTapped"/>
+                        </Border.GestureRecognizers>
+                        <Label Text="编辑宝可梦" FontFamily="NunitoBold" FontSize="14"
+                               TextColor="{DynamicResource ThTextPrimary}"
+                               HorizontalOptions="Center"/>
+                    </Border>
                 </Grid>
             </Border>
         </Grid>

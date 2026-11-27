@@ -36,7 +36,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<SessionState>();
         builder.Services.AddTransient<MainPage>();
         builder.Services.AddTransient<Pages.GamePage>();
-        builder.Services.AddTransient<Pages.PkmEditorPage>();
+        // 编辑页复用同一实例：避免每次跳转都在 UI 线程 inflate 53KB XAML（约 300ms 卡顿）
+        builder.Services.AddSingleton<Pages.PkmEditorPage>();
         builder.Services.AddTransient<Pages.BankViewPage>();
         builder.Services.AddTransient<Pages.BankPage>();
         builder.Services.AddTransient<Pages.WelcomePage>();
@@ -47,9 +48,12 @@ public static class MauiProgram
         builder.Services.AddTransient<Pages.BoxPage>();
 
 #if ANDROID
-        // Always use ThorSecondaryDisplay on Android — display detection is lazy
-        // and deferred to Show(), so it works even if the second screen isn't ready at startup.
-        builder.Services.AddSingleton<ISecondaryDisplay, Platforms.Android.ThorSecondaryDisplay>();
+        // 双屏（Thor 类设备）暂时关闭，统一按单屏跑；AppFlags.DualScreenEnabled 改回 true 即可恢复。
+        // 注意：ThorSecondaryDisplay 仍保留在代码里，只是在关闭期间不注册。
+        if (AppFlags.DualScreenEnabled)
+            builder.Services.AddSingleton<ISecondaryDisplay, Platforms.Android.ThorSecondaryDisplay>();
+        else
+            builder.Services.AddSingleton<ISecondaryDisplay, SingleScreenFallback>();
 #else
         builder.Services.AddSingleton<ISecondaryDisplay, SingleScreenFallback>();
 #endif

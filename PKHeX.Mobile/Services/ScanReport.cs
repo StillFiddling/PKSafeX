@@ -64,7 +64,10 @@ public static class ScanReport
         {
             lock (_lock)
             {
-                var head = $"候选文件 {CandidateFiles} 个，成功识别 {RecognizedFiles} 个\n" +
+                // 口径说明：「候选」只统计通用目录遍历出来的文件，
+                // 画像定向命中的候选、以及「单独添加的文件」不一定计入，所以三者加起来才对得上总数。
+                var head = $"候选（目录遍历）{CandidateFiles} 个，成功识别 {RecognizedFiles} 个"
+                         + "（单独添加的文件与画像命中的候选另计）\n" +
                            new string('-', 40) + "\n";
                 return _lines.Count == 0
                     ? head + "（没有记录：可能还没扫描，或监视目录为空）"

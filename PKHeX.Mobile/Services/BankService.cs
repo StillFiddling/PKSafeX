@@ -30,14 +30,35 @@ public class BankService
 
     private static readonly SemaphoreSlim _ioLock = new(1, 1);
 
-    /// <summary>异步保存；关键流程（存入/取出）必须 await 它确认已落盘。</summary>
-    public async Task SaveAsync()
-    {
-        var json = JsonSerializer.Serialize(_boxes);
+    /// <summary>最近一次保存失败的原因；成功时清空。</summary>
+    public string? LastError { get; private set; }
 
+#if DEBUG
+    /// <summary>仅调试构建生效：强制让下一次保存失败，用来验证存入/取出里的容错分支。</summary>
+    public static bool SimulateSaveFailure { get; set; }
+#endif
+
+    /// <summary>异步保存；不抛异常，失败只记诊断（普通 UI 操作使用）。</summary>
+    public async Task SaveAsync() => await SaveCoreAsync().ConfigureAwait(false);
+
+    /// <summary>
+    /// 关键流程（存入/取出）必须用这个：返回是否真的落盘。
+    /// 1.1.1 之前这里静默吞异常，调用方以为「银行已保存」，接着去清箱子源格，
+    /// 结果宝可梦只活在内存里，重启即消失。
+    /// </summary>
+    public Task<bool> TrySaveAsync() => SaveCoreAsync();
+
+    private async Task<bool> SaveCoreAsync()
+    {
         await _ioLock.WaitAsync().ConfigureAwait(false);
         try
         {
+#if DEBUG
+            if (SimulateSaveFailure)
+                throw new IOException("调试开关：模拟 bank.json 写入失败。");
+#endif
+            var json = JsonSerializer.Serialize(_boxes);
+
             var dir = Path.GetDirectoryName(FilePath);
             if (dir is not null) Directory.CreateDirectory(dir);
 
@@ -52,10 +73,15 @@ public class BankService
             catch { /* 备份失败不阻断主流程 */ }
 
             File.Move(tmp, FilePath, overwrite: true);
+            LastError = null;
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
+            LastError = ex.Message;
+            DiagLog.Add($"bank-save-failed {ex.GetType().Name}: {ex.Message}");
             try { if (File.Exists(FilePath + ".tmp")) File.Delete(FilePath + ".tmp"); } catch { }
+            return false;
         }
         finally
         {
@@ -283,4 +309,10 @@ public class BankSlot
         }
         catch { return null; }
     }
+}
+
+/// <summary>银行数据没能落盘。调用方据此走「银行侧失败」的处理分支，不要把宝可梦从箱子里清掉。</summary>
+public class BankSaveFailedException : Exception
+{
+    public BankSaveFailedException(string? message) : base(message ?? "银行数据写入失败") { }
 }

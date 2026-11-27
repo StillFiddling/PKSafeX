@@ -82,6 +82,17 @@ public partial class FolderManagerPage : ContentPage
         _dirService.AddDirectory(uri);
         SessionState.RequestAdd(uri, false);   // 只增量扫这个文件夹
         RefreshList();
+
+#if ANDROID
+        if (!Platforms.Android.AndroidDirectoryPicker.LastTreeWriteGranted)
+        {
+            await DisplayAlertAsync("这个文件夹只有读权限",
+                "系统没有给这个目录写入权限，里面的存档可以读、但存入/取出写不进去。\n"
+                + "常见原因：选的是存储根目录或系统受限目录。建议改选模拟器自己的存档目录"
+                + "（例如 DraStic/backup、melonDS/saves）再试一次。",
+                "好");
+        }
+#endif
     }
 
     /// <summary>
@@ -131,9 +142,17 @@ public partial class FolderManagerPage : ContentPage
         _dirService.AddFile(uri);
         SessionState.RequestAdd(uri, true);    // 只读这一个，不动其它卡片
         RefreshList();
-        await DisplayAlertAsync("已新增存档",
-            $"第 {probe.Generation} 世代 · {probe.Version}\n训练家：{probe.TrainerName}",
-            "好");
+
+        // 加成功与否由首页统一提示（新增成功 / 「已经在列表里了」/「没读到存档」），
+        // 这里只留真正需要用户立刻处理的情况：只读授权写不进存档文件。
+#if ANDROID
+        if (!Platforms.Android.AndroidFilePicker.LastPickWriteGranted)
+            await DisplayAlertAsync("加入成功（只读）",
+                $"{probe.Generation} 世代 · {probe.Version}\n训练家：{probe.TrainerName}\n\n"
+                + "这张存档是以「只读」方式加入的，存入/取出写不进文件。\n"
+                + "请改用「添加文件夹」把存档所在目录加进来（目录授权默认含写权限）。",
+                "好");
+#endif
     }
 
     private async void OnRemoveClicked(object sender, EventArgs e)

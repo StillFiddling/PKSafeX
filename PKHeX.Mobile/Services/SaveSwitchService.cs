@@ -27,9 +27,18 @@ public static class SaveSwitchService
         SaveFile? sav;
         try
         {
+            // test11 问题7 P1：同 LoadSaveAsync，优先用磁盘真实字节，读不到才回落缓存条目
+            byte[] bytes = target.RawData.ToArray();
+            try
+            {
+                var disk = await new FileService().ReadBackAsync(target.FileUri);
+                if (disk is { Length: > 0 }) bytes = disk;
+            }
+            catch { /* 读不到就沿用缓存 */ }
+
             sav = await Task.Run(() =>
             {
-                var data = target.RawData.ToArray(); // SwishCrypto 会原地解密，必须拷贝
+                var data = bytes.ToArray(); // SwishCrypto 会原地解密，必须拷贝
                 SaveUtil.TryGetSaveFile(data, out var s);
                 return s;
             });
@@ -52,7 +61,7 @@ public static class SaveSwitchService
         session.ActiveSaveFileName    = target.FileName;
         session.ActiveSaveFileUri     = target.FileUri;
         session.ActiveSaveFingerprint = "";
-        SaveSyncService.CaptureBaseline(session, target.RawData.ToArray());
+        SaveSyncService.CaptureBaseline(session, sav);
 
         return null;
     }

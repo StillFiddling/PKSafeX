@@ -5,8 +5,7 @@ namespace PKHeX.Mobile.Services;
 /// <summary>
 /// 玩家自备的神秘礼物卡库。
 ///
-/// 目录固定放在 app 外部 files/mgdb 下（文件管理器可取），启动或导入后调用
-/// <see cref="EncounterEvent.RefreshMGDB(string[])"/> 并入内置配信库，
+/// 目录固定放在 app 外部 files/mgdb 下（文件管理器可取），启动或导入后并入内置配信库，
 /// 之后的列表里就能搜到自己的卡。
 /// </summary>
 public static class MysteryGiftLibraryService
@@ -80,6 +79,7 @@ public static class MysteryGiftLibraryService
             if (resolver is null) return (false, "读不到文件");
 
             var uri  = Android.Net.Uri.Parse(contentUri);
+            if (uri is null) return (false, "文件路径识别不出来");
             var name = QueryDisplayName(resolver, uri) ?? "gift.wc7";
             if (!IsGiftFile(name)) return (false, "这不是神秘礼物卡文件（.wc7 / .pcd / .pgf 等）");
 
@@ -109,7 +109,7 @@ public static class MysteryGiftLibraryService
             using var cursor = resolver.Query(uri, null, null, null, null);
             if (cursor is null || !cursor.MoveToFirst()) return null;
 
-            int idx = cursor.GetColumnIndex(Android.Provider.OpenableColumns.DisplayName);
+            int idx = cursor.GetColumnIndex(Android.Provider.IOpenableColumns.DisplayName);
             if (idx < 0) return null;
             return cursor.GetString(idx);
         }

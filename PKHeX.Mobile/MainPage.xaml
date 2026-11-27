@@ -215,7 +215,7 @@
             <CollectionView x:Name="SaveCardsList" Grid.Row="1"
                             SelectionMode="Single"
                             BackgroundColor="Transparent"
-                            Margin="14,0"
+                            Margin="14,0,14,12"
                             SelectionChanged="OnSaveCardSelectionChanged">
                 <CollectionView.EmptyView>
                     <Label Text="没有找到存档，请在「设置」中添加文件夹。"
@@ -226,7 +226,7 @@
                 </CollectionView.EmptyView>
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Margin="0,0,0,8" HorizontalOptions="Fill" MinimumWidthRequest="0">
                             <!-- Suppress Android's native orange selection highlight;
                                  we manage selection appearance ourselves via CardStroke. -->
                             <VisualStateManager.VisualStateGroups>
@@ -314,50 +314,8 @@
             <!-- Action bar -->
             <VerticalStackLayout Grid.Row="2" Padding="14,10,14,14" Spacing="10">
 
-                <!-- Primary "Open Boxes" button -->
-                <Border x:Name="Btn_OpenBoxes"
-                        StrokeShape="RoundRectangle 14"
-                        Stroke="Transparent" StrokeThickness="1.5"
-                        Padding="0" HeightRequest="48">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#EAF5FF" Offset="0" />
-                            <GradientStop Color="#CCE8FF" Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnOpenBoxesTapped" />
-                    </Border.GestureRecognizers>
-                    <Label Text="打开箱子"
-                           FontFamily="NunitoExtraBold" FontSize="15"
-                           TextColor="#1A5A96"
-                           HorizontalOptions="Center" VerticalOptions="Center" />
-                </Border>
-
-                <!-- Secondary 4-tile grid -->
+                <!-- Secondary 5-tile grid：礼物 / 导出 / 箱子 / 银行 / 图鉴 -->
                 <Grid x:Name="SecondaryGrid" ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
-                    <!-- Settings（原 Search 位，移到本排最后一个） -->
-                    <Border x:Name="Tile_Settings" Grid.Column="4"
-                            StrokeShape="RoundRectangle 8"
-                            BackgroundColor="{DynamicResource ThCardBg}"
-                            Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
-                            Padding="0" HeightRequest="70">
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnSettingsTapped" />
-                        </Border.GestureRecognizers>
-                        <VerticalStackLayout Spacing="5" VerticalOptions="Center" HorizontalOptions="Center">
-                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent"
-                                    BackgroundColor="{DynamicResource ThIconBgBlue}"
-                                    WidthRequest="34" HeightRequest="34"
-                                    HorizontalOptions="Center">
-                                <Label Text="{x:Static theme:Ph.Gear}"
-                                       FontFamily="Phosphor" FontSize="20" TextColor="#A78BFA"
-                                       HorizontalOptions="Center" VerticalOptions="Center" />
-                            </Border>
-                            <Label Text="设置" FontFamily="NunitoBold" FontSize="10"
-                                   TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
-                        </VerticalStackLayout>
-                    </Border>
 
                     <!-- Gifts -->
                     <Border x:Name="Tile_Gifts" Grid.Column="0"
@@ -405,8 +363,31 @@
                         </VerticalStackLayout>
                     </Border>
 
+                    <!-- Boxes（原「打开箱子」主按钮，降为同排格子） -->
+                    <Border x:Name="Tile_Boxes" Grid.Column="2"
+                            StrokeShape="RoundRectangle 8"
+                            BackgroundColor="{DynamicResource ThCardBg}"
+                            Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
+                            Padding="0" HeightRequest="70">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnBoxesTapped" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="5" VerticalOptions="Center" HorizontalOptions="Center">
+                            <Border StrokeShape="RoundRectangle 9" Stroke="Transparent"
+                                    BackgroundColor="#1F3B8BFF"
+                                    WidthRequest="34" HeightRequest="34"
+                                    HorizontalOptions="Center">
+                                <Label Text="{x:Static theme:Ph.Package}"
+                                       FontFamily="Phosphor" FontSize="20" TextColor="#3B8BFF"
+                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="箱子" FontFamily="NunitoBold" FontSize="10"
+                                   TextColor="{DynamicResource ThTextSecondary}" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+
                     <!-- Bank -->
-                    <Border x:Name="Tile_Bank" Grid.Column="2"
+                    <Border x:Name="Tile_Bank" Grid.Column="3"
                             StrokeShape="RoundRectangle 8"
                             BackgroundColor="{DynamicResource ThCardBg}"
                             Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
@@ -429,7 +410,7 @@
                     </Border>
 
                     <!-- Dex -->
-                    <Border x:Name="Tile_Dex" Grid.Column="3"
+                    <Border x:Name="Tile_Dex" Grid.Column="4"
                             StrokeShape="RoundRectangle 8"
                             BackgroundColor="{DynamicResource ThCardBg}"
                             Stroke="{DynamicResource ThTileStroke}" StrokeThickness="1"
@@ -452,30 +433,16 @@
                     </Border>
                 </Grid>
 
-                <!-- Gamepad hints -->
+                <!-- Gamepad hints（三片都是按键，触摸可直接点） -->
                 <HorizontalStackLayout x:Name="HomeHintBar" Spacing="8" HorizontalOptions="Center">
                     <HorizontalStackLayout Spacing="4">
                         <Border StrokeShape="RoundRectangle 5"
                                 BackgroundColor="{DynamicResource ThHintBg}"
                                 Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
                                 Padding="8,4">
-                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
-                                <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
-                                        StrokeThickness="0" Padding="5,2">
-                                    <Label Text="↕" FontFamily="NunitoExtraBold" FontSize="9"
-                                           TextColor="{DynamicResource ThTextSecondary}"
-                                           HorizontalOptions="Center" VerticalOptions="Center" />
-                                </Border>
-                                <Label Text="{x:Static svc:UiText.HintNav}" FontFamily="Nunito" FontSize="11"
-                                       TextColor="#C8D2E8" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-                        </Border>
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout Spacing="4">
-                        <Border StrokeShape="RoundRectangle 5"
-                                BackgroundColor="{DynamicResource ThHintBg}"
-                                Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
-                                Padding="8,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnHintATapped" />
+                            </Border.GestureRecognizers>
                             <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
                                 <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
                                         StrokeThickness="0" Padding="5,2">
@@ -493,6 +460,9 @@
                                 BackgroundColor="{DynamicResource ThHintBg}"
                                 Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
                                 Padding="8,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnHintBTapped" />
+                            </Border.GestureRecognizers>
                             <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
                                 <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
                                         StrokeThickness="0" Padding="5,2">
@@ -505,19 +475,23 @@
                             </HorizontalStackLayout>
                         </Border>
                     </HorizontalStackLayout>
+                    <!-- Select = 设置（可点击，触摸设备同样能进设置页） -->
                     <HorizontalStackLayout Spacing="4">
                         <Border StrokeShape="RoundRectangle 5"
                                 BackgroundColor="{DynamicResource ThHintBg}"
                                 Stroke="{DynamicResource ThHintStroke}" StrokeThickness="1"
                                 Padding="8,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnSettingsTapped" />
+                            </Border.GestureRecognizers>
                             <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
                                 <Border StrokeShape="RoundRectangle 4" BackgroundColor="#0B1524"
                                         StrokeThickness="0" Padding="5,2">
-                                    <Label Text="X" FontFamily="NunitoExtraBold" FontSize="9"
+                                    <Label Text="Select" FontFamily="NunitoExtraBold" FontSize="9"
                                            TextColor="#A78BFA"
                                            HorizontalOptions="Center" VerticalOptions="Center" />
                                 </Border>
-                                <Label Text="{x:Static svc:UiText.HintSearch}" FontFamily="Nunito" FontSize="11"
+                                <Label Text="{x:Static svc:UiText.HintSettings}" FontFamily="Nunito" FontSize="11"
                                        TextColor="#C8D2E8" VerticalOptions="Center" />
                             </HorizontalStackLayout>
                         </Border>
@@ -528,13 +502,13 @@
 
         </Grid>
 
-        <!-- 退出确认提示（首页按 B 一次出现，再按一次才退出） -->
+        <!-- 底部提示（首页按 B 一次出现，再按一次才退出；未选存档点箱子也复用） -->
         <Border x:Name="QuitToast" Grid.RowSpan="2" IsVisible="False"
                 StrokeShape="RoundRectangle 10" StrokeThickness="0"
                 BackgroundColor="#E60B1524"
                 Padding="18,10" HorizontalOptions="Center" VerticalOptions="End"
                 Margin="0,0,0,110" InputTransparent="True">
-            <Label Text="{x:Static svc:UiText.QuitConfirm}"
+            <Label x:Name="TipLabel" Text="{x:Static svc:UiText.QuitConfirm}"
                    FontFamily="NunitoBold" FontSize="13" TextColor="#FFFFFF" />
         </Border>
 

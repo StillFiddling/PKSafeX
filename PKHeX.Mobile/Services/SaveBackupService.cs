@@ -76,7 +76,7 @@ public static class SaveBackupService
             {
                 if (!Directory.Exists(BackupRoot)) return "";
                 var files = Directory.EnumerateFiles(BackupRoot, "*.sav").ToList();
-                return files.Count == 0 ? "" : Path.GetFileName(files.Min());
+                return files.Count == 0 ? "" : (Path.GetFileName(files.Min()) ?? "");
             }
             catch { return ""; }
         }

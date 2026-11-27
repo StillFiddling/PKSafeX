@@ -76,15 +76,39 @@ public sealed class FileService : IFileService
 #if ANDROID
         if (!IsContentUri(fileUri))
         {
-            await File.WriteAllBytesAsync(fileUri, data);
+            // file:// 前缀统一降成路径，交给文件系统直写
+            var path = fileUri.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+                ? (global::Android.Net.Uri.Parse(fileUri)?.Path ?? fileUri)
+                : fileUri;
+
+            try
+            {
+                await File.WriteAllBytesAsync(path, data);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                throw new UnauthorizedAccessException(
+                    "系统拒绝写入这个路径。请确认已授予「所有文件访问」权限（首页顶部的授权条），或改用「添加文件」的方式加入这张存档。");
+            }
             return;
+        }
+
+        var context = global::Android.App.Application.Context;
+        var uri = global::Android.Net.Uri.Parse(fileUri)
+            ?? throw new InvalidOperationException("Invalid file URI.");
+
+        // 写前探测：只读授权时 OpenOutputStream 只会甩一句英文的 Permission Denial，
+        // 这里提前判定并给出能照做的中文原因。
+        if (!HasWritePermission(context, uri))
+        {
+            throw new UnauthorizedAccessException(
+                "这张存档是以「只读」方式加入的，软件没有写入权限。\n"
+                + "请到「文件夹管理 → 添加文件」重新选择它（选择器里允许修改），"
+                + "或用「添加文件夹」把整个存档目录加进来后再写入。");
         }
 
         await Task.Run(() =>
         {
-            var context = Android.App.Application.Context;
-            var uri = global::Android.Net.Uri.Parse(fileUri)
-                ?? throw new InvalidOperationException("Invalid file URI.");
             using var stream = context.ContentResolver?.OpenOutputStream(uri, "wt")
                 ?? throw new InvalidOperationException("Could not open output stream.");
             stream.Write(data, 0, data.Length);
@@ -94,6 +118,23 @@ public sealed class FileService : IFileService
         await File.WriteAllBytesAsync(fileUri, data);
 #endif
     }
+
+#if ANDROID
+    /// <summary>探测进程对该 URI 是否有写授权；探测本身出错时按「有」处理，交给真正写入时报错。</summary>
+    private static bool HasWritePermission(global::Android.Content.Context context, global::Android.Net.Uri uri)
+    {
+        try
+        {
+            return context.CheckUriPermission(uri, global::Android.OS.Process.MyPid(), global::Android.OS.Process.MyUid(),
+                       global::Android.Content.ActivityFlags.GrantWriteUriPermission)
+                   == global::Android.Content.PM.Permission.Granted;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+#endif
 
     private static bool IsContentUri(string fileUri)
         => fileUri.StartsWith("content://", StringComparison.OrdinalIgnoreCase);

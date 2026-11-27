@@ -24,25 +24,7 @@ public partial class BankViewPage : ContentPage
     private int    _cursorSlot;
     private bool   _detailToggled;
 
-    // Picker state
-    private enum PickerState { Generation, Species }
-    private PickerState        _pickerState;
-    private int                _genCursor;
-    private int                _speciesCursor;
-    private readonly List<ushort> _genSpeciesList  = [];
-    private readonly List<Border> _genBorders      = [];
-    private readonly List<Border> _speciesBorders  = [];
-    private bool               _pickerOpen;
     private bool               _bankManageOpen;
-
-    private static readonly (int Start, int End, string Region)[] GenRanges =
-    [
-        (  1, 151, "Kanto"),  (152, 251, "Johto"),
-        (252, 386, "Hoenn"),  (387, 493, "Sinnoh"),
-        (494, 649, "Unova"),  (650, 721, "Kalos"),
-        (722, 809, "Alola"),  (810, 905, "Galar"),
-        (906, 9999, "Paldea"),
-    ];
 
     private static readonly Color[] TypeColors =
     [
@@ -616,7 +598,6 @@ public partial class BankViewPage : ContentPage
             }
             return; // eat all keys while manage menu is open
         }
-        if (_pickerOpen) { HandlePickerKey(keyCode); return; }
         switch (keyCode)
         {
             case Android.Views.Keycode.DpadUp:    MoveCursor(-Columns); break;
@@ -630,7 +611,7 @@ public partial class BankViewPage : ContentPage
                 if (_boxIndex < _bank.Boxes.Count - 1) _ = LoadBoxAsync(_boxIndex + 1);
                 break;
             case Android.Views.Keycode.ButtonA:
-                if (_previewPk is null || _previewPk.Species == 0) OpenPicker();
+                // 「在空格里创建宝可梦」已整体下线（用户定稿）：空格按 A 不再有任何动作
                 break;
             case Android.Views.Keycode.ButtonY:
                 if (_previewPk?.Species > 0) _ = TryDeleteSlotAsync();
@@ -692,296 +673,7 @@ public partial class BankViewPage : ContentPage
         });
     }
 
-    private void HandlePickerKey(Android.Views.Keycode keyCode)
-    {
-        if (_pickerState == PickerState.Generation)
-        {
-            const int cols = 3;
-            switch (keyCode)
-            {
-                case Android.Views.Keycode.DpadLeft:
-                    if (_genCursor % cols > 0) { _genCursor--; UpdateGenHighlight(); } break;
-                case Android.Views.Keycode.DpadRight:
-                    if (_genCursor % cols < cols - 1 && _genCursor + 1 < GenRanges.Length)
-                    { _genCursor++; UpdateGenHighlight(); } break;
-                case Android.Views.Keycode.DpadUp:
-                    if (_genCursor >= cols) { _genCursor -= cols; UpdateGenHighlight(); } break;
-                case Android.Views.Keycode.DpadDown:
-                    if (_genCursor + cols < GenRanges.Length) { _genCursor += cols; UpdateGenHighlight(); } break;
-                case Android.Views.Keycode.ButtonA:
-                    _ = SelectGenerationAsync(_genCursor); break;
-                case Android.Views.Keycode.ButtonB:
-                    ClosePicker(); break;
-            }
-        }
-        else
-        {
-            const int cols = 8;
-            switch (keyCode)
-            {
-                case Android.Views.Keycode.DpadLeft:
-                    if (_speciesCursor % cols > 0) { _speciesCursor--; UpdateSpeciesHighlight(); } break;
-                case Android.Views.Keycode.DpadRight:
-                    if (_speciesCursor % cols < cols - 1 && _speciesCursor + 1 < _genSpeciesList.Count)
-                    { _speciesCursor++; UpdateSpeciesHighlight(); } break;
-                case Android.Views.Keycode.DpadUp:
-                    if (_speciesCursor >= cols) { _speciesCursor -= cols; UpdateSpeciesHighlight(); } break;
-                case Android.Views.Keycode.DpadDown:
-                    if (_speciesCursor + cols < _genSpeciesList.Count)
-                    { _speciesCursor += cols; UpdateSpeciesHighlight(); } break;
-                case Android.Views.Keycode.ButtonA:
-                    ConfirmPickerSelection(); break;
-                case Android.Views.Keycode.ButtonB:
-                    ShowGenSelector(); break;
-            }
-        }
-    }
 #endif
-
-    // ──────────────────────────────────────────────
-    //  Pokémon picker (A on empty slot)
-    // ──────────────────────────────────────────────
-
-    private void OpenPicker()
-    {
-        _genCursor = 0;
-        _pickerOpen = true;
-        PickerOverlay.IsVisible = true;
-        ShowGenSelector();
-    }
-
-    private void ShowGenSelector()
-    {
-        _pickerState = PickerState.Generation;
-        PickerTitle.Text = "选择世代";
-        PickerBackBtn.IsVisible = false;
-        SpeciesScroll.IsVisible = false;
-        GenSelectorGrid.IsVisible = true;
-
-        // Build gen buttons once
-        if (_genBorders.Count == 0)
-        {
-            for (int i = 0; i < GenRanges.Length; i++)
-            {
-                var (start, end, region) = GenRanges[i];
-                Application.Current!.Resources.TryGetValue("ThCardBg",        out var cardBgRes);
-                Application.Current!.Resources.TryGetValue("ThTextPrimary",   out var textPrimaryRes);
-                Application.Current!.Resources.TryGetValue("ThTextSecondary", out var textSecondaryRes);
-                Application.Current!.Resources.TryGetValue("ThNavBtnStroke",  out var strokeRes);
-                var cardBg    = cardBgRes       is Color cb ? cb : Color.FromArgb("#1A2A44");
-                var textPri   = textPrimaryRes  is Color tp ? tp : Color.FromArgb("#EDF0FF");
-                var textSec   = textSecondaryRes is Color ts ? ts : Color.FromArgb("#7080A0");
-                var strokeCol = strokeRes        is Color st ? st : Color.FromArgb("#334466");
-
-                var label = new VerticalStackLayout
-                {
-                    Spacing = 2,
-                    HorizontalOptions = LayoutOptions.Center,
-                    VerticalOptions   = LayoutOptions.Center,
-                    Children =
-                    {
-                        new Label
-                        {
-                            Text = $"GEN {i + 1}",
-                            FontFamily = "NunitoExtraBold", FontSize = 14,
-                            TextColor = textPri,
-                            HorizontalOptions = LayoutOptions.Center,
-                        },
-                        new Label
-                        {
-                            Text = region,
-                            FontFamily = "Nunito", FontSize = 10,
-                            TextColor = textSec,
-                            HorizontalOptions = LayoutOptions.Center,
-                        },
-                    },
-                };
-
-                var border = new Border
-                {
-                    StrokeShape = new RoundRectangle { CornerRadius = 12 },
-                    BackgroundColor = cardBg,
-                    Stroke = strokeCol,
-                    StrokeThickness = 1,
-                    Padding = new Thickness(8, 12),
-                    Content = label,
-                };
-                int captured = i;
-                border.GestureRecognizers.Add(new TapGestureRecognizer
-                {
-                    Command = new Command(() => _ = SelectGenerationAsync(captured)),
-                });
-                _genBorders.Add(border);
-                GenSelectorGrid.Add(border, i % 3, i / 3);
-            }
-        }
-
-        UpdateGenHighlight();
-    }
-
-    private void UpdateGenHighlight()
-    {
-        Application.Current!.Resources.TryGetValue("ThNavBtnStroke", out var strokeRes);
-        var inactive = strokeRes is Color c ? c : Color.FromArgb("#334466");
-        for (int i = 0; i < _genBorders.Count; i++)
-        {
-            _genBorders[i].Stroke         = i == _genCursor ? Color.FromArgb("#AED6F1") : inactive;
-            _genBorders[i].StrokeThickness = i == _genCursor ? 2 : 1;
-        }
-    }
-
-    private async Task SelectGenerationAsync(int genIndex)
-    {
-        _pickerState = PickerState.Species;
-        _speciesCursor = 0;
-        _genCursor = genIndex;
-
-        var (start, end, region) = GenRanges[genIndex];
-        PickerTitle.Text = $"Gen {genIndex + 1}  —  {region}";
-        PickerBackBtn.IsVisible = true;
-        GenSelectorGrid.IsVisible = false;
-        SpeciesScroll.IsVisible = true;
-        SpeciesGrid.Children.Clear();
-        _genSpeciesList.Clear();
-        _speciesBorders.Clear();
-
-        // Yield so MAUI completes a layout pass and ScrollView gets its measured width.
-        // Without this, FlexLayout with Wrap="Wrap" wraps at the wrong boundary on Android,
-        // causing the grid to appear visually split into two halves.
-        await Task.Yield();
-        if (SpeciesScroll.Width > 0)
-            SpeciesGrid.WidthRequest = SpeciesScroll.Width;
-
-        // Collect species for this generation
-        int maxSpecies = _strings.specieslist.Length - 1;
-        for (ushort sp = (ushort)start; sp <= Math.Min(end, maxSpecies); sp++)
-        {
-            if (!string.IsNullOrWhiteSpace(_strings.specieslist[sp]))
-                _genSpeciesList.Add(sp);
-        }
-
-        // Build cells in batches
-        for (int idx = 0; idx < _genSpeciesList.Count; idx++)
-        {
-            SpeciesGrid.Children.Add(BuildSpeciesCell(_genSpeciesList[idx], idx));
-            if (idx % 20 == 0) await Task.Yield();
-        }
-
-        UpdateSpeciesHighlight();
-    }
-
-    private Border BuildSpeciesCell(ushort species, int index)
-    {
-        var url  = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/{species}.png";
-        var name = _strings.specieslist[species];
-
-        // Get primary type color
-        Color typeColor;
-        try
-        {
-            var pi = PersonalTable.SV.GetFormEntry(species, 0);
-            int t  = pi.Type1;
-            typeColor = t < TypeColors.Length ? TypeColors[t] : TypeColors[0];
-        }
-        catch { typeColor = TypeColors[0]; }
-
-        var cell = new Grid
-        {
-            RowDefinitions = new RowDefinitionCollection(
-                new RowDefinition(GridLength.Star),
-                new RowDefinition(GridLength.Auto)),
-            WidthRequest  = 80,
-            HeightRequest = 90,
-            Margin        = new Thickness(3),
-        };
-
-        cell.Add(new Image
-        {
-            Source = new UriImageSource { Uri = new Uri(url), CacheValidity = TimeSpan.FromDays(30) },
-            Aspect = Aspect.AspectFit,
-            Margin = new Thickness(4),
-        }, 0, 0);
-
-        // Type-colored name overlay
-        var nameBar = new Border
-        {
-            BackgroundColor = typeColor.WithAlpha(0.75f),
-            StrokeThickness = 0,
-            Padding = new Thickness(2, 2),
-            Content = new Label
-            {
-                Text = name,
-                FontFamily = "NunitoBold", FontSize = 9,
-                TextColor = Colors.White,
-                HorizontalOptions = LayoutOptions.Center,
-                LineBreakMode = LineBreakMode.TailTruncation,
-            },
-        };
-        cell.Add(nameBar, 0, 1);
-
-        Application.Current!.Resources.TryGetValue("ThCardBg", out var cellBgRes);
-        var cellBg = cellBgRes is Color cb2 ? cb2 : Color.FromArgb("#1A2A44");
-
-        var border = new Border
-        {
-            StrokeShape = new RoundRectangle { CornerRadius = 10 },
-            BackgroundColor = cellBg,
-            Stroke = Colors.Transparent, // UpdateSpeciesHighlight paints the selected cell
-            StrokeThickness = 2,
-            Padding = new Thickness(0),
-            Content = cell,
-            WidthRequest  = 86,
-            HeightRequest = 96,
-            Margin        = new Thickness(3),
-        };
-
-        int captured = index;
-        border.GestureRecognizers.Add(new TapGestureRecognizer
-        {
-            Command = new Command(() => { _speciesCursor = captured; ConfirmPickerSelection(); }),
-        });
-        _speciesBorders.Add(border);
-        return border;
-    }
-
-    private void UpdateSpeciesHighlight()
-    {
-        for (int i = 0; i < _speciesBorders.Count; i++)
-            _speciesBorders[i].Stroke = i == _speciesCursor ? Color.FromArgb("#AED6F1") : Colors.Transparent;
-        ScrollSpeciesIntoViewIfNeeded();
-    }
-
-    private void ScrollSpeciesIntoViewIfNeeded()
-    {
-        const int cols    = 8;
-        const int cellH   = 102; // HeightRequest(96) + Margin(3*2)
-        int row   = _speciesCursor / cols;
-        double topY       = row * cellH;
-        double botY       = topY + cellH;
-        double scrollTop  = SpeciesScroll.ScrollY;
-        double viewH      = SpeciesScroll.Height;
-
-        if (botY > scrollTop + viewH)
-            _ = SpeciesScroll.ScrollToAsync(0, botY - viewH, false);
-        else if (topY < scrollTop)
-            _ = SpeciesScroll.ScrollToAsync(0, topY, false);
-    }
-
-    private static void SetDefaultMoves(PKM pk)
-    {
-        try
-        {
-            var learnset = LearnSource9SV.Instance.GetLearnset((ushort)pk.Species, 0);
-            byte level = (byte)Math.Min((int)pk.CurrentLevel, 100);
-            var moves = learnset.GetMoveRange(level);
-            if (moves.IsEmpty)
-                moves = learnset.GetAllMoves(); // fallback: full learnset
-            if (moves.IsEmpty) return;
-            int start = Math.Max(0, moves.Length - 4);
-            pk.SetMoves(moves[start..]);
-        }
-        catch { }
-    }
 
     private async Task TryDeleteSlotAsync()
     {
@@ -995,27 +687,5 @@ public partial class BankViewPage : ContentPage
         await LoadBoxAsync(_boxIndex, resetCursor: false);
     }
 
-    private void OnPickerBackTapped(object sender, EventArgs e) => ShowGenSelector();
-
-    private void ClosePicker()
-    {
-        _pickerOpen = false;
-        PickerOverlay.IsVisible = false;
-    }
-
-    private void ConfirmPickerSelection()
-    {
-        if (_speciesCursor >= _genSpeciesList.Count) return;
-        var sp = _genSpeciesList[_speciesCursor];
-        PKM pk = _session.ActiveSave is { } sav ? sav.BlankPKM : new PK9();
-        pk.Species      = sp;
-        pk.CurrentLevel = 1;
-        pk.Gender       = pk.GetSaneGender();
-        // Randomize PID until not shiny (PID=0 is shiny in most games)
-        do { pk.PID = (uint)Random.Shared.Next(); } while (pk.IsShiny);
-        SetDefaultMoves(pk);
-        _bank.Deposit(_boxIndex, _cursorSlot, pk);
-        _ = LoadBoxAsync(_boxIndex, resetCursor: false);
-        ClosePicker();
-    }
 }
+

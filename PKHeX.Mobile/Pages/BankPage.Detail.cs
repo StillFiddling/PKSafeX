@@ -15,10 +15,13 @@ public partial class BankPage
 
     private Border[]? _detailBadges;
     private GameStrings? _enStrings;
-#if ANDROID
-    private Android.Media.MediaPlayer? _cryPlayer;
-#endif
     private string _lastCrySlug = "";
+    /// <summary>详情浮层显隐序号：收尾动画校验，避免清掉新打开的卡片。</summary>
+    private int _detailSeq;
+    /// <summary>竖屏卡片高度上限（min(0.94 屏, 760)）。</summary>
+    private double _detailMaxH;
+    /// <summary>当前卡片实际高度（横屏固定值，竖屏为实测后 clamp 的结果）。</summary>
+    private double _detailCardH;
 
     private GameStrings EnStrings => _enStrings ??= GameLang.English;
 
@@ -31,35 +34,142 @@ public partial class BankPage
         if (pk is null || pk.Species == 0) return;
         _detailPk     = pk;
         _detailSlot   = _cursorSlot;
-        DetailWithdrawBtn.IsVisible = EnableWithdrawFromDetail;
-        UpdateDetailContent(pk);
+        _detailSeq++;                       // 使在途的隐藏动画收尾失效
 
+        // 顺序：先可见（否则 Measure 返回 0）→ 定宽与复位高度 → 填内容 → 占位与量高
+        DetailOverlay.IsVisible        = true;
+        ApplyDetailSheetSize();
+        UpdateDetailContent(pk);
+        ApplyDetailMovesReserve();
+        ApplyDetailSheetHeight();
+        DetailWithdrawBtn.IsVisible = EnableWithdrawFromDetail;
+
+        // 后台预取叫声，避免第一次按 R 等网络
+        {
+            var en = EnStrings.specieslist;
+            if (pk.Species > 0 && pk.Species < en.Length)
+                CryService.Prefetch(CryService.Slug(en[pk.Species]));
+        }
+
+        DetailPanel.TranslationY = 0;
         DetailScrim.Opacity      = 0;
-        DetailPanel.TranslationY = 600;
-        DetailOverlay.IsVisible  = true;
+        DetailPanel.Opacity      = 0;
+        DetailPanel.Scale        = 0.96;
         DetailOverlay.InputTransparent = false;
         DetailScrim.InputTransparent   = false;
-        _detailVisible = true;
+        _detailVisible = true;              // 先置位：淡入中按返回也能先关卡片
 
         await Task.WhenAll(
             DetailScrim.FadeToAsync(0.55, 220, Easing.CubicOut),
-            DetailPanel.TranslateToAsync(0, 0, 260, Easing.CubicOut));
+            DetailPanel.FadeToAsync(1, 220, Easing.CubicOut),
+            DetailPanel.ScaleToAsync(1, 220, Easing.CubicOut));
     }
 
     private async Task HideDetailAsync()
     {
         if (!_detailVisible) return;
+        int seq = ++_detailSeq;
         _detailVisible = false;
         DetailScrim.InputTransparent = true;
 
         await Task.WhenAll(
             DetailScrim.FadeToAsync(0, 180, Easing.CubicIn),
-            DetailPanel.TranslateToAsync(0, 600, 220, Easing.CubicIn));
+            DetailPanel.FadeToAsync(0, 180, Easing.CubicIn),
+            DetailPanel.ScaleToAsync(0.96, 200, Easing.CubicIn));
+
+        if (seq != _detailSeq) return;      // 期间又打开了新卡片，别清掉它
 
         DetailOverlay.InputTransparent = true;
         DetailOverlay.IsVisible        = false;
+        DetailPanel.TranslationY       = 0;
+        DetailPanel.Scale              = 1;
         _detailPk   = null;
         _detailSlot = -1;
+    }
+
+    /// <summary>
+    /// 卡片尺寸：竖屏按内容撑高（招式块固定 4 招占位），横屏固定 min(屏高×0.94, 760)；
+    /// 宽度统一 min(屏宽×0.92, 560)。银行页无底部通栏，行结构为 表头 + 可滚内容。
+    /// </summary>
+    private void ApplyDetailSheetSize()
+    {
+        double w = Width  > 0 ? Width  : (Window?.Width  ?? 400);
+        double h = Height > 0 ? Height : (Window?.Height ?? 700);
+        DetailPanel.WidthRequest = Math.Min(w * 0.92, 560);
+        _detailMaxH = Math.Min(h * 0.94, 760);
+
+        if (_isLandscape)
+        {
+            DetailPanel.HeightRequest         = _detailMaxH;
+            DetailPanel.MaximumHeightRequest  = double.PositiveInfinity;
+            DetailPanel.MinimumHeightRequest  = -1;
+            _detailCardH = _detailMaxH;
+        }
+        else
+        {
+            // 竖屏：先解除高度约束，等内容填完再由 ApplyDetailSheetHeight 实测
+            DetailPanel.HeightRequest         = -1;
+            DetailPanel.MaximumHeightRequest  = double.PositiveInfinity;
+            DetailPanel.MinimumHeightRequest  = -1;
+            _detailCardH = 0;
+        }
+    }
+
+    /// <summary>
+    /// 竖屏按内容量高（同箱子页）：内部 Grid 是 Auto,*，受约束测量时 * 行会吃满剩余高度，
+    /// 所以必须用无约束测量拿内容高度再 clamp 写回；横屏保持固定高，直接返回。
+    /// </summary>
+    private void ApplyDetailSheetHeight()
+    {
+        if (_isLandscape) { _detailCardH = DetailPanel.HeightRequest; return; }
+
+        double maxH  = _detailMaxH > 0 ? _detailMaxH : 700;
+        double cardW = DetailPanel.WidthRequest > 0 ? DetailPanel.WidthRequest : 360;
+        double desired = 0;
+        try { desired = DetailPanel.Measure(cardW, double.PositiveInfinity).Height; }
+        catch { /* 测量失败走兜底 */ }
+
+        double target = desired > 0 ? Math.Clamp(desired, 240, maxH) : maxH;
+        DetailPanel.HeightRequest = target;
+        _detailCardH = target;
+    }
+
+    /// <summary>招式块按 4 招式占位：竖屏用一行实测行高推 2×2 高度，1~4 招卡片高度一致；横屏归零。</summary>
+    private void ApplyDetailMovesReserve()
+    {
+        if (_isLandscape)
+        {
+            DetailSheetMovesGrid.MinimumHeightRequest = 0;
+            return;
+        }
+
+        var row  = DetailMoveRow0;
+        var name = DetailMoveName0;
+        var pp   = DetailMovePP0;
+        bool   savedVis  = row.IsVisible;
+        string savedName = name.Text;
+        string savedPp   = pp.Text;
+
+        double rowH = -1;
+        try
+        {
+            row.IsVisible = true;
+            if (string.IsNullOrEmpty(name.Text)) name.Text = "招式";
+            if (string.IsNullOrEmpty(pp.Text))   pp.Text   = "PP 99";
+
+            double colW = ((DetailPanel.WidthRequest > 0 ? DetailPanel.WidthRequest : 360) - 32 - 8) / 2;
+            if (colW < 60) colW = 60;
+            rowH = row.Measure(colW, double.PositiveInfinity).Height;
+        }
+        catch { /* Measure 偶发失败时走兜底 */ }
+        finally
+        {
+            row.IsVisible = savedVis;
+            name.Text     = savedName;
+            pp.Text       = savedPp;
+        }
+
+        DetailSheetMovesGrid.MinimumHeightRequest = rowH > 20 ? (rowH * 2 + 6) : 72;
     }
 
     private void UpdateDetailContent(PKM pk)
@@ -98,6 +208,29 @@ public partial class BankPage
                 dots[i].Fill = new SolidColorBrush(
                     Color.FromUint((uint)((tc.Alpha << 24) | (tc.Red << 16) | (tc.Green << 8) | tc.Blue)));
         }
+
+        // 能力 —— 与箱子页同口径：队伍值优先，否则按 种族值+IV+EV+等级+性格 现场计算（[HP,ATK,DEF,SPE,SPA,SPD]）
+        {
+            ushort[] st = pk.PartyStatsPresent
+                ? [ (ushort)pk.Stat_HPMax, (ushort)pk.Stat_ATK, (ushort)pk.Stat_DEF,
+                    (ushort)pk.Stat_SPE, (ushort)pk.Stat_SPA, (ushort)pk.Stat_SPD ]
+                : pk.GetStats(pk.PersonalInfo);
+            DetailStatHP.Text  = st[0].ToString();
+            DetailStatATK.Text = st[1].ToString();
+            DetailStatDEF.Text = st[2].ToString();
+            DetailStatSPE.Text = st[3].ToString();
+            DetailStatSPA.Text = st[4].ToString();
+            DetailStatSPD.Text = st[5].ToString();
+        }
+
+        // 详情
+        DetailInfoAbility.Text = pk.Ability < _strings.abilitylist.Length
+            ? _strings.abilitylist[pk.Ability] : "—";
+        DetailInfoItem.Text = pk.HeldItem > 0 && pk.HeldItem < _strings.itemlist.Length
+            ? _strings.itemlist[pk.HeldItem] : "无";
+        DetailInfoGender.Text = pk.Gender switch { 0 => "♂ 雄性", 1 => "♀ 雌性", _ => "无性别" };
+        DetailInfoBall.Text = pk.Ball < _strings.balllist.Length
+            ? _strings.balllist[pk.Ball] : "—";
 
         DetailSpriteCanvas.InvalidateSurface();
     }
@@ -145,8 +278,17 @@ public partial class BankPage
         canvas.DrawBitmap(sprite, SKRect.Create((w - drawW) / 2f, (h - drawH) / 2f, drawW, drawH));
     }
 
-    private void OnDetailScrimTapped(object? sender, TappedEventArgs e) => _ = HideDetailAsync();
-    private void OnDetailCloseTapped(object? sender, TappedEventArgs e) => _ = HideDetailAsync();
+    private void OnDetailScrimTapped(object? sender, TappedEventArgs e)
+    {
+        _ = HideDetailAsync();
+        DeselectSlot();
+    }
+
+    private void OnDetailCloseTapped(object? sender, TappedEventArgs e)
+    {
+        _ = HideDetailAsync();
+        DeselectSlot();
+    }
     private void OnDetailCryTapped(object? sender, TappedEventArgs e)
     {
         PlayDetailCry();
@@ -174,11 +316,13 @@ public partial class BankPage
 
     private void PlayDetailCry()
     {
+        _lastCrySlug = "";   // 同只连按也要能重播
         if (_detailPk is { Species: > 0 } pk) PlayCry((ushort)pk.Species);
     }
 
     private void PlayCurrentSlotCry()
     {
+        _lastCrySlug = "";   // 同只连按也要能重播
         var pk = _cursorSlot < _currentSlots.Length ? _currentSlots[_cursorSlot] : null;
         if (pk is { Species: > 0 }) PlayCry((ushort)pk.Species);
         Haptic();
@@ -194,39 +338,8 @@ public partial class BankPage
         if (slug == _lastCrySlug) return;   // 防抖
         _lastCrySlug = slug;
 
-        var cryDir  = System.IO.Path.Combine(FileSystem.CacheDirectory, "cries");
-        var cryPath = System.IO.Path.Combine(cryDir, slug + ".ogg");
-        if (!File.Exists(cryPath))
-        {
-            Directory.CreateDirectory(cryDir);
-            try
-            {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-                var bytes = await http.GetByteArrayAsync(
-                    $"https://play.pokemonshowdown.com/audio/cries/{slug}.ogg");
-                await File.WriteAllBytesAsync(cryPath, bytes);
-            }
-            catch { return; }
-        }
-        if (_lastCrySlug != slug) return;
-
-#if ANDROID
-        try
-        {
-            _cryPlayer?.Stop();
-            _cryPlayer?.Reset();
-            _cryPlayer?.Release();
-            _cryPlayer = new Android.Media.MediaPlayer();
-            _cryPlayer.SetDataSource(cryPath);
-            _cryPlayer.Prepare();
-            _cryPlayer.Start();
-        }
-        catch
-        {
-            _cryPlayer?.Release();
-            _cryPlayer = null;
-        }
-#endif
+        bool ok = await CryService.PlayAsync(slug);
+        if (!ok && _lastCrySlug == slug) _lastCrySlug = "";   // 失败放开防抖，允许重按
     }
 
     // ──────────────────────────────────────────────

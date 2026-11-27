@@ -7,7 +7,11 @@ public static class HintChips
 {
     private static readonly Color CaptionColor = Color.FromArgb("#C8D2E8");
 
-    public static Border Create(string key, string keyColorHex, string caption)
+    /// <summary>
+    /// 构建一枚按键徽章。<paramref name="onTap"/> 为空时徽章只作提示、不可点；
+    /// 新的徽章一定要传动作，别再出现「看着像按钮点了没反应」。
+    /// </summary>
+    public static Border Create(string key, string keyColorHex, string caption, Action? onTap = null)
     {
         var keyChip = new Border
         {
@@ -37,7 +41,7 @@ public static class HintChips
             VerticalOptions = LayoutOptions.Center,
         });
 
-        return new Border
+        var chip = new Border
         {
             StrokeShape     = new RoundRectangle { CornerRadius = 5 },
             BackgroundColor = Res("ThHintBg", "#111827"),
@@ -46,6 +50,16 @@ public static class HintChips
             Padding         = new Thickness(8, 4),
             Content         = inner,
         };
+
+        if (onTap is not null)
+        {
+            chip.GestureRecognizers.Add(new TapGestureRecognizer
+            {
+                Command = new Command(() => onTap()),
+            });
+        }
+
+        return chip;
     }
 
     private static Color Res(string key, string fallback)

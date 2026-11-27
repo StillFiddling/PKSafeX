@@ -205,8 +205,15 @@ public class SaveDirectoryService
         }
 
         // 1) 内容完全相同的文件只留一份（同一存档的多份拷贝）
+        //    test11 S5：先按"可写优先"排序再按内容去重——同一份存档可能同时以
+        //    只读 tree 条目和可写 doc 条目出现，若留了只读那份，用户点进去只会得到
+        //    「只能看不能存」。部分 provider 判不出写权限时按可写处理，不阻断扫描。
+        var ordered = result
+            .OrderByDescending(IsWritableEntry)   // OrderByDescending 是稳定排序，同档位保持原顺序
+            .ToList();
         var seenHash = new HashSet<string>();
-        result.RemoveAll(e => !seenHash.Add(Fingerprint(e.RawData)));
+        ordered.RemoveAll(e => !seenHash.Add(Fingerprint(e.RawData)));
+        result = ordered;
 
         // 2) 同一目录下「同一存档 + 它的备份」只留最新那份。
         //    不同目录里的同名文件（例如两个模拟器各自一个 main）都保留；
@@ -226,6 +233,30 @@ public class SaveDirectoryService
 
     private static string Fingerprint(byte[] data)
         => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data));
+
+    /// <summary>
+    /// 该条目是否可写（用于内容去重时优先保留可写那份）。
+    /// 裸文件路径按可写处理；content:// 交给平台探测，探测失败也按可写处理。
+    /// </summary>
+    private static bool IsWritableEntry(SaveEntry e)
+    {
+        if (string.IsNullOrEmpty(e.FileUri)) return false;
+#if ANDROID
+        if (e.FileUri.StartsWith("content://", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var uri = global::Android.Net.Uri.Parse(e.FileUri);
+                return uri is null || Platforms.Android.AndroidFilePicker.HasWritePermission(uri);
+            }
+            catch
+            {
+                return true;
+            }
+        }
+#endif
+        return true;
+    }
 
     /// <summary>SAF 子文件的 docId 里去掉最后一段，得到它所在目录（相对根）。</summary>
     private static string? ParentDocIdOf(string? childDocId)
