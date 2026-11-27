@@ -26,6 +26,22 @@
 
 `PKHeX.Core` 及其相关项目保持上游原样，仅作为项目引用使用。
 
+## 图像资源来源
+
+本项目不自制、不销售任何宝可梦图像素材，也不对其主张任何权利：
+
+1. **内置像素立绘**（`PKHeX.Drawing.PokeSprite/Resources/img` 下的 `Big Pokemon Sprites`、`Big Shiny Sprites`、`ball`）
+   继承自 PKHeX 原有资源目录，随上游一并引入，未作改动。
+2. **异色像素图**源自 [pokesprite](https://github.com/msikma/pokesprite)：该仓库代码为 MIT，但其 `readme` 明确
+   `The sprite images are © Nintendo/Creatures Inc./GAME FREAK Inc.`，MIT 不覆盖图像。
+3. **HOME 立绘与动态立绘**不由本项目分发：两者仅在用户于设置页主动操作时，从第三方公开源
+   （[PokeAPI/sprites](https://github.com/PokeAPI/sprites)、Pokémon Showdown）按需下载到设备本地缓存；
+   `PokeAPI/sprites` 仓库以 CC0 1.0 分发，但其 `LICENCE.txt` 首句明确 `All image contents within are Copyright The Pokémon Company`。
+   用户亦可自行准备 ZIP 导入，来源与授权由用户自行负责。
+
+以上图像的著作权均归 The Pokémon Company / Nintendo / Creatures Inc. / GAME FREAK Inc. 所有。
+本项目为个人非商业的开源修改版，与上述权利人均无隶属关系。
+
 ## 版权
 
 - PKSafe © DeffoNotAlex（GPLv3）

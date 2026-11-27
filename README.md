@@ -177,10 +177,13 @@ XAML 里的固定文案用静态引用指向 `UiText`，例如：
 
 - **PKHeX** by kwsch — 存档解析与编辑内核（GPLv3）
 - **PKSafe** by DeffoNotAlex — Android 前端基础（GPLv3）
-- **PokeAPI Sprites** — Pokémon HOME 风格精灵图（CC0）
+- **PokeAPI Sprites** — Pokémon HOME 风格精灵图来源；该仓库以 CC0 1.0 分发，但图像内容版权归 The Pokémon Company
 - **Pokémon Showdown** — 动画精灵 CDN
-- **pokesprite** — 异色精灵图（MIT）
+- **pokesprite** — 异色精灵图（代码 MIT；图像 © Nintendo / Creatures / GAME FREAK Inc.）
 - **QRCoder**（MIT）、**SkiaSharp**、**Phosphor Icons**（MIT）
+
+上述图像素材的权利均归 The Pokémon Company / Nintendo / Creatures Inc. / GAME FREAK Inc.，
+本项目不对其主张任何权利：内置像素立绘继承自 PKHeX 资源目录，其余立绘按用户操作从第三方源按需获取或由用户自行导入。
 
 ## 免责声明
 
