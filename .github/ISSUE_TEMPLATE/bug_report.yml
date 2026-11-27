@@ -1,0 +1,125 @@
+name: 问题反馈
+description: 请按表单逐项填写。缺机型、系统版本或存档类型，基本无法定位问题，只会多几个来回。
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        反馈前请先确认三件事，能省掉大量来回：
+        1. 已在设置里授予「所有文件访问」权限（多数模拟器存档在 `Android/data` 下，没这个权限读不到）；
+        2. 存档是通过「添加文件夹」整目录加入的，而不是逐个「添加文件」；
+        3. 改完存档后先退出模拟器，再进游戏读档。
+
+        如果只是「读不到存档」「写不进去」，先看 [README 的安装与升级](https://github.com/StillFiddling/PKSafeX#安装与升级) 一节。
+
+  - type: input
+    id: device
+    attributes:
+      label: 机型
+      description: 手机型号或掌机型号
+      placeholder: 例如 小米 14 / 红米 K60 / AYN Thor
+    validations:
+      required: true
+
+  - type: input
+    id: android
+    attributes:
+      label: Android 版本
+      placeholder: 例如 Android 14（可在系统设置「关于手机」里看到）
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: PKSafeX 版本
+      description: 设置页最下方能看到，或按 APK 文件名判断
+      placeholder: 例如 1.1.0 / vc68
+    validations:
+      required: true
+
+  - type: dropdown
+    id: save_type
+    attributes:
+      label: 存档类型
+      options:
+        - 3DS main
+        - NDS .sav / .dsv
+        - GBA .sav
+        - Switch main（剑盾 / BDSP / 传说阿尔宙斯 / 朱紫）
+        - 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: emulator
+    attributes:
+      label: 使用的模拟器
+      description: 模拟器名称与版本，例如 Azahar 2118、melonDS 0.9.5、Eden 0.0.4
+      placeholder: 模拟器名称 + 版本
+    validations:
+      required: true
+
+  - type: dropdown
+    id: permission
+    attributes:
+      label: 是否已授予「所有文件访问」
+      options:
+        - 已授权
+        - 未授权 / 只在系统选择器里点过目录
+        - 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: emulator_closed
+    attributes:
+      label: 改档时模拟器是否已完全退出
+      description: 模拟器仍开着会把它自己那份回写覆盖，这不是软件的 bug
+      options:
+        - 已退出（后台也没有）
+        - 模拟器还开着 / 在后台
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按顺序写清点了哪里、按了什么键、停在哪一步出的问题
+      placeholder: |
+        1. 首页进入 Pokémon Y 的箱子页
+        2. 选中第 3 箱第 5 格，按 A 打开详情
+        3. 点「存入银行」，选目标格后确认
+        4. 弹出「存入失败」……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果 与 实际结果
+      placeholder: |
+        期望：银行出现这只，箱子原格清空
+        实际：提示「存入失败」，箱子还在，银行里也没有
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 设置页打开「诊断记录」→ 复现问题 → 回设置页点「导出日志」，把文本贴在这里；也可以直接拖图片
+      placeholder: 直接粘贴日志文本，或把截图拖进来
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充说明
+      description: 可选。例如这个存档之前是否被别的工具改过、是否从别的设备拷过来
+    validations:
+      required: false

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题：先看 README
+    url: https://github.com/StillFiddling/PKSafeX#安装与升级
+    about: 「读不到存档」「写不进去」多数是授权与使用方式问题，先看安装与升级一节
+  - name: 下载与版本说明
+    url: https://github.com/StillFiddling/PKSafeX/releases/latest
+    about: 只从 Release 页或作者公布的网盘地址下载，装前建议核对 SHA-256
