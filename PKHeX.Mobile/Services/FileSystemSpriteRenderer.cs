@@ -124,13 +124,35 @@ public sealed class FileSystemSpriteRenderer : PKHeX.Drawing.Mobile.Sprites.ISpr
 
     private async Task<SKBitmap?> TryLoadAsync(string name)
     {
+        var bmp = await TryDecodeAsync($"sprites/{name}.png");
+        if (bmp is not null)
+        {
+            _cache[name] = bmp;
+            return bmp;
+        }
+
+        // Gen9（906 起）没有内置像素图标，回退到内置官绘缩略（68x56，与像素图同尺寸）。
+        // 对齐上游 PKHeX 的设计：SpriteBuilder5668a 对 SV/ZA 本就用 Artwork，HasFallbackMethod = true。
+        // 缓存仍以 b_ 键存放，所有读取点无需改动。
+        if (name.Length > 1 && name[0] == 'b')
+        {
+            bmp = await TryDecodeAsync($"sprites_gen9/{'a' + name[1..]}.png");
+            if (bmp is not null)
+            {
+                _cache[name] = bmp;
+                return bmp;
+            }
+        }
+
+        return null;
+    }
+
+    private static async Task<SKBitmap?> TryDecodeAsync(string packagePath)
+    {
         try
         {
-            await using var stream = await FileSystem.OpenAppPackageFileAsync($"sprites/{name}.png");
-            var bmp = SKBitmap.Decode(stream);
-            if (bmp is not null)
-                _cache[name] = bmp;
-            return bmp;
+            await using var stream = await FileSystem.OpenAppPackageFileAsync(packagePath);
+            return SKBitmap.Decode(stream);
         }
         catch
         {

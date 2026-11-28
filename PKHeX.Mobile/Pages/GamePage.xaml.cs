@@ -1326,8 +1326,11 @@ public partial class GamePage : ContentPage
             PreviewCanvas.InvalidateSurface();
             return;
         }
-        var name = pk.Species < _strings.specieslist.Length
-            ? _strings.specieslist[pk.Species]
+        // slug 必须来自英文表：中文字符经 ToShowdownSlug 的 [^a-z0-9] 过滤后为空串，
+        // 会拼出 ani/.gif 这类永远命中不了的路径（3D 立绘因此长期不显示）。
+        var locale = EnStrings;
+        var name = pk.Species < locale.specieslist.Length
+            ? locale.specieslist[pk.Species]
             : pk.Species.ToString();
 
         var speciesSlug = ToShowdownSlug(name);
@@ -1338,7 +1341,7 @@ public partial class GamePage : ContentPage
         string? baseSlug = null;
         if (pk.Form != 0)
         {
-            var formName = ShowdownParsing.GetStringFromForm(pk.Form, _strings, pk.Species, pk.Context);
+            var formName = ShowdownParsing.GetStringFromForm(pk.Form, locale, pk.Species, pk.Context);
             var formSuffix = ToShowdownFormSuffix(formName);
             if (formSuffix.Length > 0)
             {

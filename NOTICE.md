@@ -32,6 +32,9 @@
 
 1. **内置像素立绘**（`PKHeX.Drawing.PokeSprite/Resources/img` 下的 `Big Pokemon Sprites`、`Big Shiny Sprites`、`ball`）
    继承自 PKHeX 原有资源目录，随上游一并引入，未作改动。
+   其中第 9 世代（906–1025）的内置图取自同一目录下的 `Artwork Pokemon Sprites`，复制为
+   `PKHeX.Mobile/Resources/Raw/sprites_gen9/`（`a_` 前缀），与上游对《朱／紫》《ZA》存档使用官绘缩略的做法一致；
+   该套图同样继承自 PKHeX 资源，版权归 The Pokémon Company，本项目仅作内置显示用途。
 2. **异色像素图**源自 [pokesprite](https://github.com/msikma/pokesprite)：该仓库代码为 MIT，但其 `readme` 明确
    `The sprite images are © Nintendo/Creatures Inc./GAME FREAK Inc.`，MIT 不覆盖图像。
 3. **HOME 立绘与动态立绘**不由本项目分发：两者仅在用户于设置页主动操作时，从第三方公开源
