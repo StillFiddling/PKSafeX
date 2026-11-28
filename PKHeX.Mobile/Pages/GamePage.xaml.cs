@@ -1164,7 +1164,7 @@ public partial class GamePage : ContentPage
         if (w / h <= aspect) { drawW = w; drawH = w / aspect; }
         else                 { drawH = h; drawW = h * aspect; }
         float sx = (w - drawW) / 2f;
-        float sy = (h - drawH) / 2f;
+        float sy = h - drawH;   // 底部对齐，与详情卡 / 动图 WebView 一致
         canvas.DrawBitmap(sprite, SKRect.Create(sx, sy, drawW, drawH));
     }
 
@@ -1535,7 +1535,7 @@ public partial class GamePage : ContentPage
         <!DOCTYPE html>
         <html><head>
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <style>*{margin:0;padding:0}body{background:transparent;display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;overflow:hidden}</style>
+        <style>*{margin:0;padding:0}body{background:transparent;display:flex;align-items:flex-end;justify-content:center;width:100vw;height:100vh;overflow:hidden}</style>
         </head><body>
         <img id="s" src="{{src}}" onload="fitSprite(this)"
              style="max-width:{{pct}}vw;max-height:{{pct}}vh;width:auto;height:auto;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6))">
@@ -2381,7 +2381,8 @@ public partial class GamePage : ContentPage
         float drawW, drawH;
         if (w / h <= aspect) { drawW = w; drawH = w / aspect; }
         else                 { drawH = h; drawW = h * aspect; }
-        canvas.DrawBitmap(sprite, SKRect.Create((w - drawW) / 2f, (h - drawH) / 2f, drawW, drawH));
+        // 底部对齐：小体型站立宝可梦居中会像"悬空"，与动图 WebView 的 align-items:flex-end 保持一致。
+        canvas.DrawBitmap(sprite, SKRect.Create((w - drawW) / 2f, h - drawH, drawW, drawH));
     }
 
     private void OnPhoneSheetScrimTapped(object? sender, TappedEventArgs e) => DeselectSlot();
