@@ -32,6 +32,7 @@ public partial class GamePage : ContentPage
     private bool   _sheetWebViewReady;  // 手机详情卡动图是否已加载过 HTML
     private bool   _sheetHasCurrent;    // 当前详情卡对象是否真的有动图
     private int    _sheetAnimKey = -1;  // 详情卡当前动图对应的对象键（同种同形态同闪光则跳过重载）
+    private bool   _sheetStaticSuppressed; // 动图已占位时为 true，静态图不再绘制，防止叠加
     private int    _sheetAnimSeq;       // 详情卡动图请求序号，防竞态
     private int    _boxLoadSeq;         // 箱子加载序号，防旧预加载回写
     private double _canvasW, _canvasH;  // cached after first layout (TopSelectedPanel is invisible during initial layout pass)
@@ -136,7 +137,10 @@ public partial class GamePage : ContentPage
         PhoneSheetWebView.Navigated += (_, _) =>
         {
             if (_sheetHasCurrent)
+            {
+                _sheetStaticSuppressed = true;
                 PhoneSheetCanvas.IsVisible = false;
+            }
         };
 
         // Keep the radar frosted-glass box square regardless of row height.
@@ -251,6 +255,7 @@ public partial class GamePage : ContentPage
         _sheetWebViewReady = false;
         _sheetHasCurrent   = false;
         _sheetAnimKey      = -1;
+        _sheetStaticSuppressed = false;
         PhoneSheetWebView.IsVisible = false;
         PhoneSheetCanvas.IsVisible  = true;
 
@@ -1466,8 +1471,10 @@ public partial class GamePage : ContentPage
         if (!Preferences.Default.Get(SettingsPage.KeyAnimated3D, true))
         {
             _sheetHasCurrent = false;
+            _sheetStaticSuppressed = false;
             PhoneSheetWebView.IsVisible = false;
             PhoneSheetCanvas.IsVisible = true;
+            PhoneSheetCanvas.InvalidateSurface();
             return;
         }
 
@@ -1478,6 +1485,7 @@ public partial class GamePage : ContentPage
         if (dataUri is null)
         {
             _sheetHasCurrent = false;
+            _sheetStaticSuppressed = false;
             PhoneSheetWebView.IsVisible = false;
             PhoneSheetCanvas.IsVisible = true;
             PhoneSheetCanvas.InvalidateSurface();
@@ -1485,18 +1493,29 @@ public partial class GamePage : ContentPage
         }
 
         _sheetHasCurrent = true;
-        PhoneSheetCanvas.IsVisible = true;   // 垫底，等 WebView 导航完成再收起
         PhoneSheetWebView.IsVisible = true;
 
         if (!_sheetWebViewReady)
         {
+            // 首次加载：静态图先垫一帧，导航完成（或 400ms 兜底）后收起，
+            // 之后一律靠 JS 换图，不再等导航事件（换 src 不会触发 Navigated）。
+            _sheetStaticSuppressed = false;
+            PhoneSheetCanvas.IsVisible = true;
             PhoneSheetWebView.Source = new HtmlWebViewSource { Html = BuildSpriteShell(dataUri, 100) };
             _sheetWebViewReady = true;
+            await Task.Delay(400);
+            if (seq == _sheetAnimSeq && _sheetHasCurrent)
+            {
+                _sheetStaticSuppressed = true;
+                PhoneSheetCanvas.IsVisible = false;
+            }
         }
         else
         {
+            _sheetStaticSuppressed = true;
+            PhoneSheetCanvas.IsVisible = false;   // 已有内容，立刻收起，避免双图叠加
             await PhoneSheetWebView.EvaluateJavaScriptAsync(
-                $"var s=document.getElementById('s');s.src='{dataUri}';");
+                $"var s=document.getElementById('s');s.src='{dataUri}';if(window.fitSprite)fitSprite(s);");
         }
 
         if (seq != _sheetAnimSeq)
@@ -1518,8 +1537,18 @@ public partial class GamePage : ContentPage
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <style>*{margin:0;padding:0}body{background:transparent;display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;overflow:hidden}</style>
         </head><body>
-        <img id="s" src="{{src}}"
-             style="max-width:{{pct}}vw;max-height:{{pct}}vh;width:auto;height:auto;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6))">
+        <img id="s" src="{{src}}" onload="fitSprite(this)"
+             style="max-width:{{pct}}vw;max-height:{{pct}}vh;width:auto;height:auto;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6))">
+        <script>
+        function fitSprite(img){
+            if(!img.naturalWidth||!img.naturalHeight) return;
+            var pct = {{pct}} / 100;
+            var boxW = innerWidth * pct, boxH = innerHeight * pct;
+            var scale = Math.min(boxW / img.naturalWidth, boxH / img.naturalHeight);
+            // 只有放大时才用最近邻，缩小时用平滑插值，避免小图变大发锯齿、大图缩小变糊
+            img.style.imageRendering = scale > 1.05 ? 'pixelated' : 'auto';
+        }
+        </script>
         </body></html>
         """;
 
@@ -2342,6 +2371,9 @@ public partial class GamePage : ContentPage
     {
         var canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.Transparent);
+        // 当前有动图在显示时，静态图一律不画：即使 Canvas 因为任何原因还可见，
+        // 也不会和 WebView 里的 gif 叠成"重影"。
+        if (_sheetStaticSuppressed) return;
         if (_phoneSheetPk is null) return;
         var sprite = _sprites.GetSprite(_phoneSheetPk);
         float aspect = sprite.Width > 0 ? (float)sprite.Width / sprite.Height : 1f;
