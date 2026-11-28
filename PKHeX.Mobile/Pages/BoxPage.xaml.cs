@@ -38,17 +38,23 @@ public partial class BoxPage : ContentPage
         LoadBox(_boxIndex);
     }
 
+    private int _loadSeq;
+
     private async void LoadBox(int box)
     {
         if (_sav is null)
             return;
 
+        int seq = ++_loadSeq;
         _currentBox = _sav.GetBoxData(box);
         BoxNameLabel.Text = _sav is IBoxDetailName named
             ? named.GetBoxName(box)
             : $"Box {box + 1}";
 
+        // 先画一帧（命中缓存就立刻有图），预加载在后台补图，避免被联网阻塞。
+        BoxCanvas.InvalidateSurface();
         await _sprites.PreloadBoxAsync(_currentBox);
+        if (seq != _loadSeq) return;
         BoxCanvas.InvalidateSurface();
     }
 

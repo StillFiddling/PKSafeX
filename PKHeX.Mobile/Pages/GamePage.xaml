@@ -670,6 +670,13 @@
                         <skia:SKCanvasView x:Name="PhoneSheetCanvas"
                                            WidthRequest="90" HeightRequest="90"
                                            PaintSurface="OnPhoneSheetSpritePaint"/>
+                        <!-- 1.1.2：手机详情卡动图。TopScreenPanel 在手机端整体隐藏，
+                             原来的 SpriteWebView 只有双屏掌机可见，手机永远看不到动图。 -->
+                        <WebView x:Name="PhoneSheetWebView"
+                                 WidthRequest="90" HeightRequest="90"
+                                 BackgroundColor="Transparent"
+                                 InputTransparent="True"
+                                 IsVisible="False"/>
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="5">
                             <HorizontalStackLayout x:Name="PhoneSheetTypeBadges" Spacing="5"/>
                             <Label x:Name="PhoneSheetSpecies"

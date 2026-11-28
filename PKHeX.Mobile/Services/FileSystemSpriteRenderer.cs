@@ -136,7 +136,14 @@ public sealed class FileSystemSpriteRenderer : PKHeX.Drawing.Mobile.Sprites.ISpr
         // 缓存仍以 b_ 键存放，所有读取点无需改动。
         if (name.Length > 1 && name[0] == 'b')
         {
-            bmp = await TryDecodeAsync($"sprites_gen9/{'a' + name[1..]}.png");
+            var artName = 'a' + name[1..];
+            bmp = await TryDecodeAsync($"sprites_gen9/{artName}.png");
+
+            // 官绘没有闪光变体：b_1000s 回退 a_1000s 会落空，去掉尾部 s 用普通配色，
+            // 否则第 9 世代的闪光会显示成空白。
+            if (bmp is null && artName.Length > 2 && artName[^1] == 's')
+                bmp = await TryDecodeAsync($"sprites_gen9/{artName[..^1]}.png");
+
             if (bmp is not null)
             {
                 _cache[name] = bmp;

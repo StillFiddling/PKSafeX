@@ -28,6 +28,12 @@ public partial class GamePage : ContentPage
     private int  _previewSpecies = -1; // debounce WebView reloads
     private CancellationTokenSource _loadBoxCts = new();
     private bool   _spriteWebViewReady; // true after first full HTML load
+    private bool   _spriteHasCurrent;   // 当前预览对象是否真的有动图（Thor 预览栏用）
+    private bool   _sheetWebViewReady;  // 手机详情卡动图是否已加载过 HTML
+    private bool   _sheetHasCurrent;    // 当前详情卡对象是否真的有动图
+    private int    _sheetAnimKey = -1;  // 详情卡当前动图对应的对象键（同种同形态同闪光则跳过重载）
+    private int    _sheetAnimSeq;       // 详情卡动图请求序号，防竞态
+    private int    _boxLoadSeq;         // 箱子加载序号，防旧预加载回写
     private double _canvasW, _canvasH;  // cached after first layout (TopSelectedPanel is invisible during initial layout pass)
     private bool _showLegalityBadges;
     private bool?[] _legalityCache = [];
@@ -124,6 +130,14 @@ public partial class GamePage : ContentPage
         // UpdateTypeBadges / UpdatePhoneSheetContent update them in-place from here on.
         foreach (var b in _typeBadges)      TypeBadgeRow.Children.Add(b);
         foreach (var b in _phoneTypeBadges) PhoneSheetTypeBadges.Children.Add(b);
+
+        // 详情卡动图：先让静态图垫在下面，等 WebView 真正完成导航再隐藏，
+        // 避免"动图还没渲染出来、静态图也没了"的空白。
+        PhoneSheetWebView.Navigated += (_, _) =>
+        {
+            if (_sheetHasCurrent)
+                PhoneSheetCanvas.IsVisible = false;
+        };
 
         // Keep the radar frosted-glass box square regardless of row height.
         RadarBorder.SizeChanged += (_, _) =>
@@ -229,7 +243,16 @@ public partial class GamePage : ContentPage
         // Also reset _previewSpecies so the scale/toggle changes from Settings
         // take effect even when returning to the same Pokémon.
         _spriteWebViewReady = false;
+        _spriteHasCurrent   = false;
         _previewSpecies     = -1;
+
+        // 详情卡动图同样整体复位：返回页面后让 WebView 重新加载干净
+        _sheetAnimSeq++;
+        _sheetWebViewReady = false;
+        _sheetHasCurrent   = false;
+        _sheetAnimKey      = -1;
+        PhoneSheetWebView.IsVisible = false;
+        PhoneSheetCanvas.IsVisible  = true;
 
         if (freshSave)
         {
@@ -704,6 +727,7 @@ public partial class GamePage : ContentPage
         _loadBoxCts.Cancel();
         _loadBoxCts = new CancellationTokenSource();
         var ct = _loadBoxCts.Token;
+        int loadSeq = ++_boxLoadSeq;
 
         BoxCanvas.CancelAnimations();
         BoxCanvas.TranslationX = 0;
@@ -764,11 +788,10 @@ public partial class GamePage : ContentPage
             UpdateInfoBar();
             BoxCanvas.InvalidateSurface();
 
-            await _sprites.PreloadBoxAsync(_currentBox);
-            if (ct.IsCancellationRequested) return;
-
-            BoxCanvas.InvalidateSurface();
-
+            // 首帧先画已有缓存，再后台补图重绘。
+            // 原来这里 await 预加载（含联网）后才启动滑动动画，箱内某只 HOME 图取不到时
+            // 会 3 源 ×2 次重试，观感就是"切箱子卡一秒"。
+            var boxForPreload = _currentBox;
             if (canSlide)
             {
                 // Pre-position canvas on the incoming side, then slide to rest
@@ -776,7 +799,9 @@ public partial class GamePage : ContentPage
                 await BoxCanvas.TranslateToAsync(0, 0, 140, Easing.CubicOut);
                 if (ct.IsCancellationRequested) { BoxCanvas.TranslationX = 0; return; }
             }
-            if (_showLegalityBadges) _ = RunLegalityBadgesAsync(_currentBox);
+            if (_showLegalityBadges) _ = RunLegalityBadgesAsync(boxForPreload);
+
+            _ = PreloadBoxAndRepaintAsync(boxForPreload, ct, loadSeq);
         }
         catch (Exception) when (ct.IsCancellationRequested)
         {
@@ -788,6 +813,22 @@ public partial class GamePage : ContentPage
     // ──────────────────────────────────────────────
     //  Box navigation
     // ──────────────────────────────────────────────
+
+    /// <summary>后台补图：预加载完成后，仅当仍是同一箱、未被取消时重绘一次。</summary>
+    private async Task PreloadBoxAndRepaintAsync(PKM[] box, CancellationToken ct, int loadSeq)
+    {
+        try
+        {
+            await _sprites.PreloadBoxAsync(box);
+        }
+        catch
+        {
+            return;
+        }
+        if (ct.IsCancellationRequested || loadSeq != _boxLoadSeq)
+            return;
+        BoxCanvas.InvalidateSurface();
+    }
 
     private void OnPrevBox(object sender, EventArgs e)
     {
@@ -1322,12 +1363,62 @@ public partial class GamePage : ContentPage
         if (!Preferences.Default.Get(SettingsPage.KeyAnimated3D, true))
         {
             // 3D sprites disabled — show static HOME sprite only
+            _spriteHasCurrent = false;
+            SpriteWebView.IsVisible = false;
             PreviewCanvas.IsVisible = true;
             PreviewCanvas.InvalidateSurface();
             return;
         }
-        // slug 必须来自英文表：中文字符经 ToShowdownSlug 的 [^a-z0-9] 过滤后为空串，
-        // 会拼出 ani/.gif 这类永远命中不了的路径（3D 立绘因此长期不显示）。
+
+        // 竞态保护：快速移动光标时，先发出的请求可能晚返回，不能覆盖当前选中。
+        int requestKey = (pk.Species << 10) | (pk.Form << 1) | (pk.IsShiny ? 1 : 0);
+        var dataUri = await ResolveAnimatedDataUriAsync(pk);
+        if (requestKey != _previewSpecies)
+            return;
+
+        if (dataUri is null)
+        {
+            // Nothing cached and download failed — show static sprite and hide the stale gif
+            _spriteHasCurrent = false;
+            SpriteWebView.IsVisible = false;
+            PreviewCanvas.IsVisible = true;
+            PreviewCanvas.InvalidateSurface();
+            return;
+        }
+
+        // Use CSS viewport units (vw/vh) for the sprite so sizing is always relative to
+        // the WebView container — pixel values derived from MAUI layout measurements are
+        // unreliable here because the layout pass may not have completed yet.
+        int pct = _isLandscapePhone ? 55 : 80;
+
+        _spriteHasCurrent = true;
+        if (!_spriteWebViewReady)
+        {
+            SpriteWebView.IsVisible = true;
+            PreviewCanvas.IsVisible = false;
+            await Task.Delay(50);
+            SpriteWebView.Source    = new HtmlWebViewSource { Html = BuildSpriteShell(dataUri, pct) };
+            _spriteWebViewReady     = true;
+        }
+        else
+        {
+            var js = $$"""
+                var s=document.getElementById('s');
+                s.src='{{dataUri}}';
+                s.style.maxWidth='{{pct}}vw';
+                s.style.maxHeight='{{pct}}vh';
+                """;
+            await SpriteWebView.EvaluateJavaScriptAsync(js);
+        }
+    }
+
+    /// <summary>
+    /// 解析动图 data URI：形态优先、基础形态兜底。返回 null 表示没有可用动图。
+    /// slug 必须来自英文表：中文字符经 ToShowdownSlug 的 [^a-z0-9] 过滤后为空串，
+    /// 会拼出 ani/.gif 这类永远命中不了的路径（3D 立绘因此长期不显示）。
+    /// </summary>
+    private async Task<string?> ResolveAnimatedDataUriAsync(PKM pk)
+    {
         var locale = EnStrings;
         var name = pk.Species < locale.specieslist.Length
             ? locale.specieslist[pk.Species]
@@ -1350,41 +1441,68 @@ public partial class GamePage : ContentPage
             }
         }
 
-        // Fetch from disk cache or download; falls back to static canvas if unavailable
+        // Fetch from disk cache or download; falls back to base-form animated sprite
         var dataUri = await Services.SpriteCacheService.GetDataUriAsync(slug, shiny);
-        // Form sprite not on CDN — fall back to base-form animated sprite
         if (dataUri is null && baseSlug is not null)
             dataUri = await Services.SpriteCacheService.GetDataUriAsync(baseSlug, shiny);
-        if (dataUri is null)
+        return dataUri;
+    }
+
+    /// <summary>
+    /// 手机详情卡（竖屏与横屏共用）的动图加载。手机端 TopScreenPanel 整体隐藏，
+    /// 原来只写 SpriteWebView 的动图在手机上永远不可见，这里改用卡片内的 PhoneSheetWebView。
+    /// </summary>
+    private async Task LoadSheetAnimatedSpriteAsync(PKM pk)
+    {
+        int key = (pk.Species << 10) | (pk.Form << 1) | (pk.IsShiny ? 1 : 0);
+
+        // 同一只（同种/同形态/同闪光）且已有动图在显示：不重载，避免每次点同一格闪一下
+        if (key == _sheetAnimKey && _sheetHasCurrent && _sheetWebViewReady)
+            return;
+
+        int seq = ++_sheetAnimSeq;
+        _sheetAnimKey = key;
+
+        if (!Preferences.Default.Get(SettingsPage.KeyAnimated3D, true))
         {
-            // Nothing cached and download failed — show static sprite, don't break WebView state
-            PreviewCanvas.IsVisible = true;
-            PreviewCanvas.InvalidateSurface();
+            _sheetHasCurrent = false;
+            PhoneSheetWebView.IsVisible = false;
+            PhoneSheetCanvas.IsVisible = true;
             return;
         }
 
-        // Use CSS viewport units (vw/vh) for the sprite so sizing is always relative to
-        // the WebView container — pixel values derived from MAUI layout measurements are
-        // unreliable here because the layout pass may not have completed yet.
-        int pct = _isLandscapePhone ? 55 : 80;
+        var dataUri = await ResolveAnimatedDataUriAsync(pk);
+        if (seq != _sheetAnimSeq)
+            return;
 
-        if (!_spriteWebViewReady)
+        if (dataUri is null)
         {
-            SpriteWebView.IsVisible = true;
-            PreviewCanvas.IsVisible = false;
-            await Task.Delay(50);
-            SpriteWebView.Source    = new HtmlWebViewSource { Html = BuildSpriteShell(dataUri, pct) };
-            _spriteWebViewReady     = true;
+            _sheetHasCurrent = false;
+            PhoneSheetWebView.IsVisible = false;
+            PhoneSheetCanvas.IsVisible = true;
+            PhoneSheetCanvas.InvalidateSurface();
+            return;
+        }
+
+        _sheetHasCurrent = true;
+        PhoneSheetCanvas.IsVisible = true;   // 垫底，等 WebView 导航完成再收起
+        PhoneSheetWebView.IsVisible = true;
+
+        if (!_sheetWebViewReady)
+        {
+            PhoneSheetWebView.Source = new HtmlWebViewSource { Html = BuildSpriteShell(dataUri, 100) };
+            _sheetWebViewReady = true;
         }
         else
         {
-            var js = $$"""
-                var s=document.getElementById('s');
-                s.src='{{dataUri}}';
-                s.style.maxWidth='{{pct}}vw';
-                s.style.maxHeight='{{pct}}vh';
-                """;
-            await SpriteWebView.EvaluateJavaScriptAsync(js);
+            await PhoneSheetWebView.EvaluateJavaScriptAsync(
+                $"var s=document.getElementById('s');s.src='{dataUri}';");
+        }
+
+        if (seq != _sheetAnimSeq)
+        {
+            // 期间又切了对象，让新的那次请求决定最终显示
+            return;
         }
     }
 
@@ -1917,7 +2035,7 @@ public partial class GamePage : ContentPage
             _previewSpecies = key;
             LoadAnimatedSprite(pk);
         }
-        else if (_spriteWebViewReady && Preferences.Default.Get(SettingsPage.KeyAnimated3D, true))
+        else if (_spriteHasCurrent && Preferences.Default.Get(SettingsPage.KeyAnimated3D, true))
         {
             SpriteWebView.IsVisible = true;
             PreviewCanvas.IsVisible = false;
@@ -1932,6 +2050,7 @@ public partial class GamePage : ContentPage
         _previewPk = null;
         _detailToggled = false; // reset toggle when cursor leaves a Pokémon
         SpriteWebView.IsVisible    = false;
+        _spriteHasCurrent          = false;
         PreviewCanvas.IsVisible    = true;
         TopIdlePanel.IsVisible     = true;
         TopSelectedPanel.IsVisible = false;
@@ -2073,6 +2192,9 @@ public partial class GamePage : ContentPage
             ? _strings.balllist[pk.Ball] : "—";
 
         PhoneSheetCanvas.InvalidateSurface();
+
+        // 手机详情卡动图：拿不到就保持静态图，不阻塞内容刷新
+        _ = LoadSheetAnimatedSpriteAsync(pk);
     }
 
     // ──────────────────────────────────────────────
@@ -2279,7 +2401,7 @@ public partial class GamePage : ContentPage
                 cols[0].Width = new GridLength(0);
                 cols[1].Width = GridLength.Star;
                 cols[2].Width = new GridLength(0);
-                bool use3D = _spriteWebViewReady && Preferences.Default.Get(SettingsPage.KeyAnimated3D, true);
+                bool use3D = _spriteHasCurrent && Preferences.Default.Get(SettingsPage.KeyAnimated3D, true);
                 SpriteWebView.IsVisible = use3D;
                 PreviewCanvas.IsVisible = !use3D;
                 if (!use3D) PreviewCanvas.InvalidateSurface();

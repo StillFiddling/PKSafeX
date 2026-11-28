@@ -36,6 +36,8 @@ public static class HomeSpriteCacheService
     // Decoded bitmaps kept in memory so GetCached() is zero-allocation on hot path
     private static readonly Dictionary<string, SKBitmap> _mem = new();
     private static readonly HashSet<string>              _inFlight = [];
+    // 会话级负缓存：确认取不到的 slug 不再重试，避免每次进箱子都为它重新走一轮网络
+    private static readonly HashSet<string>              _failed = [];
     private static readonly object                       _lock = new();
 
     // ── Form slug table ───────────────────────────────────────────────────────
@@ -263,6 +265,7 @@ public static class HomeSpriteCacheService
         if (IsBulkDownloading) return;
 
         await EnsureMigratedAsync().ConfigureAwait(false);
+        ClearFailures();   // 用户主动补下载：给之前失败的 slug 一次重试机会
         _bulkCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         ct = _bulkCts.Token;
 
@@ -388,13 +391,24 @@ public static class HomeSpriteCacheService
         lock (_lock)
         {
             if (_inFlight.Contains(mkey)) return null;
+            if (_failed.Contains(mkey)) return null;   // 本会话已确认取不到，不再重试
             _inFlight.Add(mkey);
         }
 
         try
         {
             var bytes = await DownloadAsync(slug, shiny).ConfigureAwait(false);
-            if (bytes is null) return null;
+
+            // 形态在 PokeAPI 没有独立图（如舞步形态 741-pom-pom 实测 404）时，
+            // 回退基础形态的高清图并写回形态缓存，避免永远掉到内置像素图。
+            if (bytes is null && form != 0)
+                bytes = await GetBaseFormBytesAsync(species, shiny).ConfigureAwait(false);
+
+            if (bytes is null)
+            {
+                lock (_lock) _failed.Add(mkey);
+                return null;
+            }
 
             await SaveBytesAsync(disk, bytes).ConfigureAwait(false);
 
@@ -408,6 +422,64 @@ public static class HomeSpriteCacheService
         {
             lock (_lock) _inFlight.Remove(mkey);
         }
+    }
+
+    /// <summary>
+    /// 基础形态（form 0）的 HOME 图字节：先读磁盘，没有再联网下载并落盘。
+    /// 供形态图缺失时降级使用。
+    /// </summary>
+    private static async Task<byte[]?> GetBaseFormBytesAsync(ushort species, bool shiny)
+    {
+        var baseSlug = species.ToString();
+        var basePath = DiskPath(baseSlug, shiny);
+
+        try
+        {
+            if (File.Exists(basePath) && new FileInfo(basePath).Length > 100)
+                return await File.ReadAllBytesAsync(basePath).ConfigureAwait(false);
+        }
+        catch { }
+
+        var mkey = MemKey(baseSlug, shiny);
+        lock (_lock)
+        {
+            if (_inFlight.Contains(mkey)) return null;
+            if (_failed.Contains(mkey)) return null;
+            _inFlight.Add(mkey);
+        }
+        try
+        {
+            var bytes = await DownloadAsync(baseSlug, shiny).ConfigureAwait(false);
+            if (bytes is not null)
+            {
+                await SaveBytesAsync(basePath, bytes).ConfigureAwait(false);
+                using var ms = new MemoryStream(bytes);
+                var decoded = SKBitmap.Decode(ms);
+                if (decoded is not null)
+                    lock (_lock) _mem[mkey] = decoded;
+                else
+                    lock (_lock) _failed.Add(mkey);
+            }
+            else
+            {
+                lock (_lock) _failed.Add(mkey);
+            }
+            return bytes;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            lock (_lock) _inFlight.Remove(mkey);
+        }
+    }
+
+    /// <summary>清空会话级负缓存（用户点"补下载"或网络恢复时调用）。</summary>
+    public static void ClearFailures()
+    {
+        lock (_lock) _failed.Clear();
     }
 
     /// <summary>
